@@ -1,4 +1,4 @@
-# mcf commit IPC trend
+# commit IPC trend
 
 从 XiangShan CI 性能报告中提取同一 workload、同一 SimPoint 切片在不同提交下的
 IPC，并按 Git committer time 绘制趋势图。

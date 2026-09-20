@@ -1,1 +1,1 @@
-"""Tests for the mcf commit IPC trend demo."""
+"""Tests for commit IPC trend analysis."""
