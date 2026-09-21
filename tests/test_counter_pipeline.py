@@ -58,6 +58,10 @@ class CounterPipelineTest(unittest.TestCase):
         try:
             metric_count = connection.execute("SELECT count(*) FROM metric_definitions").fetchone()[0]
             value_count = connection.execute("SELECT count(*) FROM counter_values").fetchone()[0]
+            slice_count = connection.execute("SELECT count(*) FROM slices").fetchone()[0]
+            run_slice_count = connection.execute(
+                "SELECT count(*) FROM slice_results"
+            ).fetchone()[0]
             unavailable = connection.execute(
                 "SELECT count(*) FROM counter_values WHERE availability != 'available'"
             ).fetchone()[0]
@@ -66,6 +70,12 @@ class CounterPipelineTest(unittest.TestCase):
         self.assertEqual(payload["metric_count"], metric_count)
         self.assertEqual(payload["observation_count"], value_count)
         self.assertEqual(len(payload["values"]), value_count)
+        self.assertEqual(len(payload["slices"]), slice_count)
+        self.assertEqual(value_count, run_slice_count * metric_count)
+        self.assertEqual(
+            {(row["slice"], row["short_commit"]) for row in payload["values"]},
+            {(row["slice"], commit["short_commit"]) for row in payload["slices"] for commit in payload["commits"]},
+        )
         self.assertEqual(unavailable, 0)
 
     def test_dashboard_javascript_has_valid_syntax(self):

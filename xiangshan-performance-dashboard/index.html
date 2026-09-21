@@ -6,7 +6,7 @@
   <title>香山 · SPEC06 IPC 性能看板</title>
   <meta name="description" content="香山 SPEC06 切片 IPC 回归分析看板">
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23265ecf'/%3E%3Cpath d='M5 23L12 14L18 19L27 7' fill='none' stroke='white' stroke-width='3'/%3E%3C/svg%3E">
-  <link rel="stylesheet" href="style.css?v=2026-09-21">
+  <link rel="stylesheet" href="style.css?v=2026-09-21-3">
 </head>
 <body>
   <aside class="rail">
@@ -53,6 +53,25 @@
         <label>目标 B<select id="target"></select></label>
       </section>
 
+      <section id="counterTrendControls" class="counter-trend-controls" aria-label="趋势序列筛选" hidden>
+        <div class="counter-view-row">
+          <div>
+            <strong>趋势显示</strong>
+            <span id="counterSelectionSummary">已选择 0 个计数器</span>
+          </div>
+          <div id="counterDisplayMode" class="segmented" role="group" aria-label="趋势显示内容">
+            <button type="button" data-display="combined" class="selected">IPC + 计数器</button>
+            <button type="button" data-display="counters">仅计数器</button>
+            <button type="button" data-display="ipc">仅 IPC</button>
+          </div>
+          <div class="counter-selection-actions">
+            <button id="selectAllCounters" type="button">全选</button>
+            <button id="clearCounters" type="button">清空</button>
+          </div>
+        </div>
+        <div id="counterMetricChecks" class="counter-metric-checks"></div>
+      </section>
+
       <div class="context-line">
         <span>配置 <b id="configName">DefaultConfig</b></span>
         <span>切片集 <b id="sliceCount">-</b></span>
@@ -65,17 +84,17 @@
       <section class="panel trend-panel">
         <div class="panel-head">
           <div><h2 id="trendTitle">性能趋势</h2><p id="trendSub"></p></div>
-          <div class="segmented" aria-label="显示模式"><button data-mode="absolute" class="selected" type="button">绝对值</button><button data-mode="relative" type="button">相对基线</button></div>
+          <div id="valueMode" class="segmented" aria-label="数值模式"><button data-mode="absolute" class="selected" type="button">绝对值</button><button data-mode="relative" type="button">相对基线</button></div>
         </div>
         <div id="trend" class="chart"></div>
-        <div class="chart-footer"><span><i class="legend-line"></i><span id="legend"></span></span><span>虚线标记 A / B · 点击数据点设置 B</span><span id="hoverReadout"></span></div>
+        <div class="chart-footer"><div id="legend" class="trend-legend"></div><span>虚线标记 A / B · 点击数据点设置 B</span><span id="hoverReadout"></span></div>
       </section>
 
       <section id="counterInsights" class="counter-insights" hidden>
         <div class="analysis-grid counter-grid">
           <section class="panel relation-panel">
             <div class="panel-head">
-              <div><h2>计数器 × IPC 关系</h2><p id="relationSub">每个点是一个 mcf 切片，点大小表示切片权重</p></div>
+              <div><h2>计数器 × IPC 关系</h2><p id="relationSub">每个点是当前 workload 的一个切片，点大小表示切片权重</p></div>
               <div class="segmented" id="relationMode" role="group" aria-label="相关性视角">
                 <button data-rel="level" class="selected" type="button">切片水平</button>
                 <button data-rel="delta" type="button">A→B 变化</button>
@@ -136,6 +155,6 @@
       <footer><span>香山 kunminghu-v3 主线 · 2026-09 SPEC06 实测数据</span><span>Workload IPC = 1 ÷ 加权 CPI · 套件指数 = workload 相对 IPC 的几何平均</span></footer>
     </div>
   </main>
-  <script src="app.js?v=2026-09-21"></script>
+  <script src="app.js?v=2026-09-21-3"></script>
 </body>
 </html>

@@ -36,13 +36,13 @@ http://localhost:8000/xiangshan-performance-dashboard/?data=../outputs/another-r
 - `workload-weighted-trend.csv`：workload 加权 IPC、权重覆盖率
 - `slice-ipc-wide.csv`：每个切片在各 commit 的 IPC
 - `commit-transition-summary.csv`：相邻 commit 的切片升降分布
-- `perf-counters.json`：由 SQLite 导出的注册计数器定义、mcf 切片和观测值
+- `perf-counters.json`：由 SQLite 导出的注册计数器定义、全部切片和观测值
 - `scores.csv`：数据库导出的 SPEC06 suite/benchmark 发布分数
 
 默认数据由 `tools/build_mainline_september_dashboard.py` 和
 `tools/import_mainline_counters.py` 从 SQLite 数据库生成。commit 必须位于
 `origin/kunminghu-v3` 第一父链，并使用 `DefaultConfig`、固定 1094 个 SPEC06 gcc16
-切片。计数器当前覆盖 5 个主线点的 18 个 mcf 高权重切片、20 个注册指标；筛选和导入
+切片。计数器当前覆盖 5 个主线点、55 个 workload 的全部 1094 个切片和 20 个注册指标；筛选和导入
 审计记录在 `outputs/mainline-september/selection-audit.json`。
 
 ## 分析口径
@@ -71,6 +71,9 @@ http://localhost:8000/xiangshan-performance-dashboard/?data=../outputs/another-r
 - 20 个计数器按 |ρ| 排序的相关性排行，点击即可切换趋势和散点对象
 - 计数器 × 切片矩阵，按计数器方向着色，附各计数器的切片中位变化
 - 原始计数 / 每千指令两种计数器口径切换（趋势、KPI、散点、矩阵、导出同步）
+- 计数器趋势可按 commit 与 IPC 合并绘制；支持勾选保留的计数器，并切换“IPC + 计数器 / 仅计数器 / 仅 IPC”
+- 合并趋势自动使用相对基线 A 的变化百分比对齐不同量纲；单独查看 IPC 或单个计数器时可切换绝对值
+- 合并趋势对每条序列独立纵向缩放，IPC 的小幅波动不会被大幅计数器压扁；悬浮提示仍显示真实百分比
 
 ## 性能计数器数据链路
 
@@ -79,11 +82,15 @@ http://localhost:8000/xiangshan-performance-dashboard/?data=../outputs/another-r
 ```bash
 # 扫描一个或多个 run 下的切片日志，生成 path + name 级完整目录
 python3 tools/discover_perf_counters.py /path/to/run-a /path/to/run-b \
-  --glob 'mcf_*/simulator_err.txt' \
+  --glob '*_*_*/simulator_err.txt' \
   --output /tmp/perf-counter-inventory.csv
 
-# 导入主线点的 mcf 注册计数器并导出静态页面可读取的数据
-python3 tools/import_mainline_counters.py
+# 根据数据库中的 run/slice 日志路径导入全部注册计数器，并导出看板数据
+python3 tools/import_mainline_counters.py --jobs 8 --strict
+
+# 可选：只重建指定 workload、run 或切片范围
+python3 tools/import_mainline_counters.py --workload mcf
+python3 tools/import_mainline_counters.py --run c8d7b3a5c --slice-glob 'gcc_*'
 
 # 也可从任意包含 metric_definitions/counter_values 的数据库导出
 python3 tools/export_dashboard_counters.py \
@@ -93,11 +100,13 @@ python3 tools/export_dashboard_counters.py \
 
 计数器使用最后一次完整 PERF dump；完整性由前一 dump 的行数、首键和末键共同验证。
 原始身份使用 `source_path + source_name`，因此不同模块的同名计数器不会混合。当前注册的
-20 项在 5 个主线 run、18 个 mcf 切片的 90 份日志中均为唯一匹配且覆盖率为 100%。
+20 项在 5 个主线 run、1094 个切片的 5470 份日志中均为唯一匹配且覆盖率为 100%，
+共形成 109,400 条可用观测。看板中的相关性、矩阵和切片 A/B 表按当前切片所属
+workload 计算，避免混合不同程序的绝对 IPC 水平。
 
-计数器和 IPC summary 的窗口不同，因此当前只展示 raw count/raw cycles，不使用 IPC
-窗口的 instructions 做归一化。相对模式会读取指标方向，将“越低越好”和“越高越好”
-统一转换成正值代表性能改善。
+计数器和 IPC summary 的窗口不同；“每千指令”使用同一 PERF dump 中的
+`rob_committed_instructions` 归一化，不会混用 IPC summary 的 instructions。相对模式会读取
+指标方向，将“越低越好”和“越高越好”统一转换成正值代表性能改善。
 
 ## 计数器洞察口径
 

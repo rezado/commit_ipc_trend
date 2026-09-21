@@ -58,6 +58,21 @@ p { margin:0; }
 .filters .entity-filter { flex:1.5; }
 select { color:#30435d; border:1px solid #d7e0eb; background:#fff; border-radius:5px; padding:8px 28px 8px 10px; min-width:0; width:100%; height:38px; text-overflow:ellipsis; }
 .filter-sep { width:1px; height:38px; background:var(--border); margin:0 3px; }
+.counter-trend-controls { margin-top:10px; padding:13px 17px 14px; background:#fff; border:1px solid var(--border); border-radius:7px; }
+.counter-view-row { display:flex; align-items:center; gap:16px; }
+.counter-view-row > div:first-child { min-width:170px; }
+.counter-view-row strong { display:block; color:#43536b; font-size:12px; font-weight:650; }
+.counter-view-row > div:first-child span { display:block; color:#8a96a7; font-size:10px; margin-top:2px; }
+.counter-selection-actions { display:flex; gap:5px; margin-left:auto; }
+.counter-selection-actions button { border:1px solid #d9e1eb; background:#fff; color:#617188; border-radius:4px; padding:5px 9px; font-size:11px; }
+.counter-selection-actions button:hover { color:#2858c4; border-color:#b9caed; background:#f6f9ff; }
+.counter-metric-checks { display:grid; grid-template-columns:repeat(5,minmax(150px,1fr)); gap:8px 18px; padding-top:12px; margin-top:11px; border-top:1px solid #edf1f5; }
+.counter-check-group { min-width:0; }
+.counter-check-group strong { display:block; margin-bottom:5px; color:#8a96a7; font-size:10px; font-weight:600; text-transform:uppercase; }
+.counter-check { display:flex; align-items:center; gap:7px; min-width:0; padding:3px 0; color:#52637a; font-size:11px; cursor:pointer; }
+.counter-check input { width:14px; height:14px; margin:0; accent-color:var(--blue); flex:0 0 auto; }
+.counter-check span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.counter-check.focused span { color:#2858c4; font-weight:650; }
 .context-line { display:flex; gap:20px; align-items:center; padding:11px 2px 18px; font-size:11px; color:#8793a5; }
 .context-line b { font-weight:600; color:#5e6e84; margin-left:4px; }
 .context-line .coverage { margin-left:auto; color:var(--green); display:flex; align-items:center; gap:6px; }
@@ -83,8 +98,9 @@ h2 { font-size:16px; font-weight:670; margin:0 0 3px; letter-spacing:0; }
 .chart { padding:0 14px; height:280px; }
 .chart svg { width:100%; height:100%; display:block; overflow:visible; }
 .chart-footer { border-top:1px solid #edf1f5; margin:0 22px; padding:11px 0; display:flex; gap:24px; color:#8794a6; font-size:11px; align-items:center; min-height:40px; }
-.chart-footer > span:first-child { color:#576b89; }
-.legend-line { display:inline-block; width:18px; height:3px; background:var(--blue); vertical-align:middle; margin-right:6px; }
+.trend-legend { display:flex; align-items:center; gap:6px 14px; flex-wrap:wrap; color:#576b89; }
+.legend-item { display:inline-flex; align-items:center; gap:6px; white-space:nowrap; }
+.legend-line { display:inline-block; width:18px; height:3px; background:var(--legend-color,var(--blue)); }
 #hoverReadout { margin-left:auto; color:#3c5d91; }
 .empty-state { height:100%; display:grid; place-items:center; color:#8995a5; font-size:13px; }
 svg text { font-family:inherit; letter-spacing:0; }
@@ -224,6 +240,7 @@ button:disabled,select:disabled { opacity:.58; cursor:default; }
   .kpi { padding:15px; }
   .kpi-value { font-size:24px; }
   .filters { gap:9px; }
+  .counter-metric-checks { grid-template-columns:repeat(3,minmax(150px,1fr)); }
   .transitions { grid-template-columns:repeat(2,1fr); }
   .transition-card:nth-child(3n) { border-right:1px solid #edf1f5; }
   .transition-card:nth-child(2n) { border-right:0; }
@@ -252,6 +269,10 @@ button:disabled,select:disabled { opacity:.58; cursor:default; }
   .filters { display:grid; grid-template-columns:1fr 1fr; padding:12px; gap:9px; }
   .filters .entity-filter { grid-column:span 2; }
   .filter-sep { display:none; }
+  .counter-view-row { align-items:flex-start; flex-wrap:wrap; gap:10px; }
+  .counter-view-row > div:first-child { min-width:130px; }
+  .counter-selection-actions { margin-left:0; }
+  .counter-metric-checks { grid-template-columns:1fr 1fr; gap:8px 14px; max-height:260px; overflow:auto; }
   .context-line { gap:8px 14px; flex-wrap:wrap; }
   .context-line .coverage { margin-left:0; }
   .kpis { grid-template-columns:1fr 1fr; }

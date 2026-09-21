@@ -20,11 +20,11 @@ def rows(connection: sqlite3.Connection, sql: str) -> list[dict[str, object]]:
     return [dict(row) for row in connection.execute(sql)]
 
 
-def main() -> int:
-    args = parse_args()
-    if not args.db.is_file():
-        raise SystemExit(f"database does not exist: {args.db}")
-    connection = sqlite3.connect(args.db)
+def export_dashboard_counters(database: Path, output: Path) -> dict[str, object]:
+    """Export every registered counter observation for the static dashboard."""
+    if not database.is_file():
+        raise FileNotFoundError(f"database does not exist: {database}")
+    connection = sqlite3.connect(database)
     connection.row_factory = sqlite3.Row
     try:
         metrics = rows(
@@ -75,7 +75,8 @@ def main() -> int:
         connection.close()
     payload = {
         "schema_version": "counter-dashboard/v1",
-        "database": str(args.db),
+        "database": str(database),
+        "scope": "all imported runs and slices",
         "metric_count": len(metrics),
         "observation_count": len(values),
         "metrics": metrics,
@@ -83,17 +84,27 @@ def main() -> int:
         "slices": slices,
         "values": values,
     }
-    args.output.parent.mkdir(parents=True, exist_ok=True)
-    args.output.write_text(
+    output.parent.mkdir(parents=True, exist_ok=True)
+    temporary = output.with_suffix(output.suffix + ".tmp")
+    temporary.write_text(
         json.dumps(payload, ensure_ascii=False, separators=(",", ":")) + "\n",
         encoding="utf-8",
     )
-    print(
-        json.dumps(
-            {"output": str(args.output), "metrics": len(metrics), "values": len(values)},
-            ensure_ascii=False,
-        )
-    )
+    temporary.replace(output)
+    return {
+        "output": str(output), "metrics": len(metrics), "slices": len(slices),
+        "commits": len(commits), "values": len(values),
+        "available": sum(row["availability"] == "available" for row in values),
+    }
+
+
+def main() -> int:
+    args = parse_args()
+    try:
+        summary = export_dashboard_counters(args.db, args.output)
+    except FileNotFoundError as error:
+        raise SystemExit(str(error)) from error
+    print(json.dumps(summary, ensure_ascii=False))
     return 0
 
 

@@ -62,6 +62,15 @@ python3 tools/build_mainline_september_dashboard.py
 python3 tools/import_mainline_counters.py
 ```
 
+默认读取数据库记录的全部 run/slice 日志；当前主线数据覆盖 5 个 commit、55 个 workload、
+1094 个切片和 20 个指标，共 109,400 条可用观测。导入器支持并行解析，也可做局部修复：
+
+```bash
+# 仅重新导入 mcf，或指定某个 commit / 切片
+python3 tools/import_mainline_counters.py --workload mcf --jobs 8
+python3 tools/import_mainline_counters.py --run c8d7b3a5c --slice-glob 'gcc_*'
+```
+
 也可以从任意包含 `metric_definitions` 和 `counter_values` 的数据库导出看板 JSON：
 
 ```bash
@@ -74,7 +83,7 @@ python3 tools/export_dashboard_counters.py \
 
 看板的性能计数器视图在“指定切片趋势 + A/B 明细”之上提供三类性能洞察：
 
-- **计数器 × IPC 关系**：切片水平 / A→B 变化 / 全区间面板三种视角的散点，附 Spearman ρ
+- **计数器 × IPC 关系**：在当前 workload 内计算切片水平 / A→B 变化 / 全区间面板三种视角的散点，附 Spearman ρ
   与最小二乘趋势，用来判断哪些计数器真的和 IPC 同向；
 - **计数器相关性排行**：20 个指标按 |ρ| 排序，点击即可切换趋势与散点对象；
 - **计数器 × 切片矩阵**：按指标方向着色，展示每个计数器在各切片的相对变化和中位值。

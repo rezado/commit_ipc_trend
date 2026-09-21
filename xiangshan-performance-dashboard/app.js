@@ -36,7 +36,9 @@ let state = {
   counterMetric: '',
   counterSlice: '',
   counterUnit: 'raw',
-  relationMode: 'level'
+  relationMode: 'level',
+  counterDisplay: 'combined',
+  selectedCounterMetrics: []
 };
 
 const number = value => value === '' || value == null ? null : Number(value);
@@ -146,6 +148,7 @@ async function loadData() {
   state.slice = model.slicesByWorkload.get(state.workload)[0].slice;
   state.counterSlice = model.counterSlices.find(slice => slice.slice.includes('_6753_'))?.slice || model.counterSlices[0]?.slice || '';
   state.counterMetric = model.counterMetricById.has('branch_mispredictions') ? 'branch_mispredictions' : model.counterMetrics[0]?.metric_id || '';
+  state.selectedCounterMetrics = [state.counterMetric];
   state.target = model.commits.length - 1;
 }
 
@@ -167,7 +170,14 @@ function sliceIPC(slice, commitIndex) {
 }
 
 function selectedCounterMetric() {
+  if (!state.counterMetric && state.selectedCounterMetrics?.length) state.counterMetric = state.selectedCounterMetrics[0];
   return model.counterMetricById.get(state.counterMetric) || model.counterMetrics[0];
+}
+
+function selectedCounterMetricIds() {
+  const available = new Set(model.counterMetrics.map(metric => metric.metric_id));
+  const ids = (state.selectedCounterMetrics || []).filter(metricId => available.has(metricId));
+  return ids;
 }
 
 function counterRow(slice, commitIndex, metricId = state.counterMetric) {
@@ -201,6 +211,15 @@ function counterUnitLabel(metric = selectedCounterMetric()) {
 function sliceLabel(slice) {
   const row = model.counterSliceIndex.get(slice);
   return row ? String(row.checkpoint) : slice;
+}
+
+function currentCounterWorkload() {
+  return model.counterSliceIndex.get(state.counterSlice)?.workload || '';
+}
+
+function counterAnalysisSlices() {
+  const workload = currentCounterWorkload();
+  return workload ? model.counterSlices.filter(slice => slice.workload === workload) : model.counterSlices;
 }
 
 function ipcAt(slice, commitIndex) {
@@ -262,10 +281,11 @@ function correlationStrength(rho) {
 }
 
 function relationPairs(mode, metricId = state.counterMetric) {
+  const slices = counterAnalysisSlices();
   if (mode === 'panel') {
     const pairs = [];
     for (let index = 0; index < model.commits.length - 1; index++) {
-      for (const slice of model.counterSlices) {
+      for (const slice of slices) {
         pairs.push({
           slice: slice.slice, weight: slice.weight,
           x: counterChangePct(slice.slice, index, index + 1, metricId),
@@ -276,13 +296,13 @@ function relationPairs(mode, metricId = state.counterMetric) {
     return pairs;
   }
   if (mode === 'delta') {
-    return model.counterSlices.map(slice => ({
+    return slices.map(slice => ({
       slice: slice.slice, weight: slice.weight,
       x: counterChangePct(slice.slice, state.base, state.target, metricId),
       y: ipcChangePct(slice.slice, state.base, state.target)
     }));
   }
-  return model.counterSlices.map(slice => ({
+  return slices.map(slice => ({
     slice: slice.slice, weight: slice.weight,
     x: counterValue(slice.slice, state.target, metricId),
     y: ipcAt(slice.slice, state.target)
@@ -295,9 +315,10 @@ function relationAxisLabels(mode, metric = selectedCounterMetric()) {
 }
 
 function relationCaption(mode) {
-  if (mode === 'level') return `每个点是一个 mcf 切片在 ${model.commits[state.target].short_commit} 的绝对水平；回答“哪些计数器解释了切片之间的 IPC 差异”。`;
-  if (mode === 'delta') return `每个点是一个 mcf 切片从 ${model.commits[state.base].short_commit} 到 ${model.commits[state.target].short_commit} 的相对变化；回答“哪些计数器跟着 IPC 一起动”。`;
-  return '每个点是“相邻 commit × 切片”的变化对，汇总全部区间；样本更多但混合了不同 commit 的改动。';
+  const workload = currentCounterWorkload();
+  if (mode === 'level') return `每个点是一个 ${workload} 切片在 ${model.commits[state.target].short_commit} 的绝对水平；回答“哪些计数器解释了切片之间的 IPC 差异”。`;
+  if (mode === 'delta') return `每个点是一个 ${workload} 切片从 ${model.commits[state.base].short_commit} 到 ${model.commits[state.target].short_commit} 的相对变化；回答“哪些计数器跟着 IPC 一起动”。`;
+  return `每个点是“相邻 commit × ${workload} 切片”的变化对，汇总全部区间；样本更多但混合了不同 commit 的改动。`;
 }
 
 function performanceChange(metric, a, b) {
@@ -388,7 +409,12 @@ function syncControls() {
     $('entity').value = state.slice;
   } else {
     $('entity').disabled = false;
-    $('entity').innerHTML = model.counterSlices.map(slice => `<option value="${escapeHtml(slice.slice)}">${escapeHtml(slice.workload)} / ${escapeHtml(slice.checkpoint)}</option>`).join('');
+    const groups = new Map();
+    for (const slice of model.counterSlices) {
+      if (!groups.has(slice.workload)) groups.set(slice.workload, []);
+      groups.get(slice.workload).push(slice);
+    }
+    $('entity').innerHTML = [...groups].map(([workload, slices]) => `<optgroup label="${escapeHtml(workload)}">${slices.map(slice => `<option value="${escapeHtml(slice.slice)}">${escapeHtml(String(slice.checkpoint))} · ${escapeHtml(slice.slice)}</option>`).join('')}</optgroup>`).join('');
     $('entity').value = state.counterSlice;
   }
 
@@ -402,15 +428,48 @@ function syncControls() {
     $('metric').value = state.counterMetric;
     $('counterUnitLabel').hidden = false;
     $('counterUnit').value = state.counterUnit;
+    renderCounterTrendControls();
   } else {
     $('metric').innerHTML = state.level === 'suite'
       ? '<option value="score">SPEC2006/GHz 分数</option><option value="index">IPC 归一化指数</option>'
       : coreMetricOptions;
     $('metric').value = state.metric;
     $('counterUnitLabel').hidden = true;
+    $('counterTrendControls').hidden = true;
   }
   document.querySelectorAll('#relationMode [data-rel]').forEach(button => button.classList.toggle('selected', button.dataset.rel === state.relationMode));
   document.querySelectorAll('[data-mode]').forEach(button => button.classList.toggle('selected', button.dataset.mode === state.mode));
+}
+
+function renderCounterTrendControls() {
+  const ids = selectedCounterMetricIds();
+  state.selectedCounterMetrics = ids;
+  $('counterTrendControls').hidden = state.level !== 'counter';
+  $('counterSelectionSummary').textContent = `${ids.length} / ${model.counterMetrics.length} 个计数器已选择`;
+  document.querySelectorAll('#counterDisplayMode [data-display]').forEach(button => button.classList.toggle('selected', button.dataset.display === state.counterDisplay));
+  const categories = new Map();
+  for (const metric of model.counterMetrics) {
+    if (!categories.has(metric.category)) categories.set(metric.category, []);
+    categories.get(metric.category).push(metric);
+  }
+  $('counterMetricChecks').innerHTML = [...categories].map(([category, metrics]) => `<div class="counter-check-group"><strong>${escapeHtml(category)}</strong>${metrics.map(metric => {
+    const checked = ids.includes(metric.metric_id) ? ' checked' : '';
+    const focused = metric.metric_id === state.counterMetric ? ' focused' : '';
+    return `<label class="counter-check${focused}" title="${escapeHtml(metric.display_name)}"><input type="checkbox" data-counter-check="${escapeHtml(metric.metric_id)}"${checked}><span>${escapeHtml(metric.display_name)}</span></label>`;
+  }).join('')}</div>`).join('');
+  $('counterMetricChecks').querySelectorAll('[data-counter-check]').forEach(input => {
+    input.onchange = () => {
+      const next = [...$('counterMetricChecks').querySelectorAll('[data-counter-check]:checked')].map(item => item.dataset.counterCheck);
+      state.selectedCounterMetrics = next;
+      if (next.length) state.counterMetric = next.includes(state.counterMetric) ? state.counterMetric : next[0];
+      render();
+    };
+    input.parentElement.ondblclick = event => {
+      event.preventDefault();
+      state.counterMetric = input.dataset.counterCheck;
+      render();
+    };
+  });
 }
 
 function drawChart(id, values, {color = '#2f63db', format = value => value.toFixed(2)} = {}) {
@@ -453,6 +512,47 @@ function drawChart(id, values, {color = '#2f63db', format = value => value.toFix
     point.onclick = select;
     point.onkeydown = event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); select(); } };
     point.onmouseenter = () => { $('hoverReadout').textContent = `${model.commits[index].short_commit}  ${format(values[index])}`; };
+    point.onmouseleave = () => { $('hoverReadout').textContent = ''; };
+  });
+}
+
+function drawMultiChart(id, series) {
+  const usable = series.flatMap(item => item.values.filter(finite));
+  if (!usable.length) { $(id).innerHTML = '<div class="empty-state">当前筛选没有可用数据</div>'; return; }
+  const W = 1120, H = 274, pad = {l:68, r:28, t:28, b:50}, plotWidth = W - pad.l - pad.r, plotHeight = H - pad.t - pad.b;
+  const x = index => pad.l + index * plotWidth / Math.max(1, model.commits.length - 1);
+  // IPC 的变化通常只有几个百分点，而计数器可能变化几十甚至几百个百分点。
+  // 每个序列使用自己的纵向范围，保留真实值用于 tooltip，从视觉上避免小波动被压扁。
+  const scales = series.map(item => {
+    const values = item.values.filter(finite);
+    let low = Math.min(0, ...values), high = Math.max(0, ...values), spread = high - low;
+    if (spread < 1e-8) spread = Math.max(Math.abs(high) * 0.04, 0.04);
+    return {low: low - spread * 0.2, high: high + spread * 0.2};
+  });
+  const y = (value, seriesIndex) => {
+    const scale = scales[seriesIndex];
+    return pad.t + (scale.high - value) / (scale.high - scale.low) * plotHeight;
+  };
+  const format = value => `${signed(value, 2)}%`;
+  let svg = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${escapeHtml(currentName())} IPC 与性能计数器趋势">`;
+  for (let step = 0; step <= 4; step++) { const gridY = pad.t + plotHeight * step / 4; svg += `<line x1="${pad.l}" y1="${gridY}" x2="${W - pad.r}" y2="${gridY}" stroke="#e9eef5"/>`; }
+  svg += `<text x="${pad.l - 13}" y="${pad.t + 4}" text-anchor="end" fill="#8795a9" font-size="10">高</text><text x="${pad.l - 13}" y="${H - pad.b + 4}" text-anchor="end" fill="#8795a9" font-size="10">低</text>`;
+  for (const [index, letter, lineColor] of [[state.base, 'A', '#7d8ba0'], [state.target, 'B', '#2f63db']]) svg += `<line x1="${x(index)}" y1="${pad.t}" x2="${x(index)}" y2="${H - pad.b}" stroke="${lineColor}" stroke-dasharray="4 5" opacity=".55"/><text x="${x(index)}" y="16" text-anchor="middle" fill="${lineColor}" font-size="11" font-weight="700">${letter}</text>`;
+  series.forEach((item, seriesIndex) => {
+    const color = item.color;
+    const segments = []; let segment = [];
+    item.values.forEach((value, index) => { if (finite(value)) segment.push(`${x(index)},${y(value, seriesIndex)}`); else if (segment.length) { segments.push(segment); segment = []; } });
+    if (segment.length) segments.push(segment);
+    segments.forEach(points => { svg += `<polyline points="${points.join(' ')}" fill="none" stroke="${color}" stroke-width="${item.kind === 'ipc' ? '2.8' : '2.1'}" stroke-linejoin="round" ${item.kind === 'ipc' ? '' : 'stroke-dasharray="5 3"'}/>`; });
+    item.values.forEach((value, index) => { if (finite(value)) svg += `<circle class="multi-point" data-rev="${index}" data-series="${seriesIndex}" cx="${x(index)}" cy="${y(value, seriesIndex)}" r="${index === state.target ? 4.8 : 3.5}" fill="white" stroke="${color}" stroke-width="2"><title>${escapeHtml(item.label)} · ${model.commits[index].short_commit} · ${format(value)}</title></circle>`; });
+  });
+  model.commits.forEach((commit, index) => { svg += `<text x="${x(index)}" y="${H - 18}" text-anchor="middle" fill="${index === state.target ? '#2f63db' : '#7f8da1'}" font-size="11" font-weight="${index === state.target ? 700 : 500}">${commit.short_commit.slice(0, 7)}</text>`; });
+  svg += '</svg>'; $(id).innerHTML = svg;
+  $(id).querySelectorAll('.multi-point').forEach(point => {
+    const index = Number(point.dataset.rev), item = series[Number(point.dataset.series)];
+    const select = () => { state.target = index; render(); };
+    point.onclick = select;
+    point.onmouseenter = () => { $('hoverReadout').textContent = `${item.label} · ${model.commits[index].short_commit}  ${format(item.values[index])}`; };
     point.onmouseleave = () => { $('hoverReadout').textContent = ''; };
   });
 }
@@ -600,11 +700,12 @@ function renderSlices() {
 
 function renderCounterSlices() {
   const metric = selectedCounterMetric();
-  const records = model.counterSlices.map(slice => {
+  const workload = currentCounterWorkload();
+  const records = counterAnalysisSlices().map(slice => {
     const a = counterValue(slice.slice, state.base), b = counterValue(slice.slice, state.target);
     return {slice, a, b, delta:performanceChange(metric, a, b)};
   }).sort((a, b) => (finite(b.delta) ? Math.abs(b.delta) : -1) - (finite(a.delta) ? Math.abs(a.delta) : -1));
-  $('sliceTitle').textContent = `${metric.display_name} · 切片 A/B 对比`;
+  $('sliceTitle').textContent = `${workload} · ${metric.display_name} · 切片 A/B 对比`;
   $('valueAHead').textContent = `${counterUnitLabel(metric)} · A`;
   $('valueBHead').textContent = `${counterUnitLabel(metric)} · B`;
   $('changeHead').textContent = '性能变化';
@@ -780,13 +881,14 @@ function renderCorrelationBars() {
   }).join('');
   $('correlationBars').querySelectorAll('button').forEach(button => button.onclick = () => {
     state.counterMetric = button.dataset.metric;
+    if (!selectedCounterMetricIds().includes(state.counterMetric)) state.selectedCounterMetrics = [...selectedCounterMetricIds(), state.counterMetric];
     render();
   });
 }
 
 function renderCounterMatrix() {
   const metric = selectedCounterMetric();
-  const slices = [...model.counterSlices].sort((a, b) => {
+  const slices = [...counterAnalysisSlices()].sort((a, b) => {
     const deltaA = ipcChangePct(a.slice, state.base, state.target), deltaB = ipcChangePct(b.slice, state.base, state.target);
     return (finite(deltaB) ? deltaB : -Infinity) - (finite(deltaA) ? deltaA : -Infinity);
   });
@@ -817,9 +919,10 @@ function renderCounterMatrix() {
   $('counterMatrix').innerHTML = `<thead>${head}</thead><tbody>${body}</tbody>`;
   $('counterMatrix').querySelectorAll('tr.metric-row').forEach(row => row.onclick = () => {
     state.counterMetric = row.dataset.metric;
+    if (!selectedCounterMetricIds().includes(state.counterMetric)) state.selectedCounterMetrics = [...selectedCounterMetricIds(), state.counterMetric];
     render();
   });
-  $('matrixSub').textContent = `${model.commits[state.base].short_commit} → ${model.commits[state.target].short_commit} · ${state.counterUnit === 'per_kinst' ? '每千指令' : '原始计数'}口径 · 绿色代表该计数器朝有利方向变化`;
+  $('matrixSub').textContent = `${currentCounterWorkload()} · ${model.commits[state.base].short_commit} → ${model.commits[state.target].short_commit} · ${state.counterUnit === 'per_kinst' ? '每千指令' : '原始计数'}口径 · 绿色代表该计数器朝有利方向变化`;
 }
 
 function renderTransitions() {
@@ -843,12 +946,51 @@ function renderCommits() {
 }
 
 function renderTrend() {
+  if (state.level === 'counter' && state.counterDisplay === 'counters' && !selectedCounterMetricIds().length) {
+    $('trendTitle').textContent = `${currentName()} · 性能计数器趋势`;
+    $('trendSub').textContent = '请至少勾选一个性能计数器';
+    $('valueMode').hidden = true;
+    $('legend').innerHTML = '';
+    $('trend').innerHTML = '<div class="empty-state">未选择性能计数器</div>';
+    return;
+  }
+  if (state.level === 'counter' && state.counterDisplay === 'ipc') {
+    const values = model.commits.map((_, index) => ipcAt(state.counterSlice, index));
+    $('trendTitle').textContent = `${currentName()} · IPC趋势`;
+    $('trendSub').textContent = '横轴为 commit · 固定切片 IPC · 可切换绝对值 / 相对基线';
+    $('valueMode').hidden = false;
+    const displayed = state.mode === 'relative' ? (() => { const base = values[state.base]; return values.map(value => finite(value) && finite(base) && base !== 0 ? (value / base - 1) * 100 : null); })() : values;
+    $('legend').innerHTML = '<span class="legend-item"><i class="legend-line"></i>IPC</span>';
+    drawChart('trend', displayed, {color:'#2f63db', format:state.mode === 'relative' ? value => `${signed(value, 2)}%` : value => value.toFixed(3)});
+    return;
+  }
+  if (state.level === 'counter' && state.counterDisplay !== 'ipc' && (state.counterDisplay === 'combined' || selectedCounterMetricIds().length > 1)) {
+    const ids = selectedCounterMetricIds();
+    const ipcRaw = model.commits.map((_, index) => ipcAt(state.counterSlice, index));
+    const ipcBase = ipcRaw[state.base];
+    const series = [];
+    if (state.counterDisplay === 'combined') series.push({label:'IPC', kind:'ipc', color:'#2f63db', values:ipcRaw.map(value => finite(value) && finite(ipcBase) && ipcBase !== 0 ? (value / ipcBase - 1) * 100 : null)});
+    const palette = ['#d5732f','#239b8b','#8259c7','#d14973','#5b84d8','#8c9a3c','#b34e9b','#4d8baf'];
+    ids.forEach((metricId, index) => {
+      const metric = model.counterMetricById.get(metricId);
+      const raw = model.commits.map((_, commitIndex) => counterValue(state.counterSlice, commitIndex, metricId));
+      const base = raw[state.base];
+      series.push({label:metric.display_name, kind:'counter', color:palette[index % palette.length], values:raw.map(value => finite(value) && finite(base) && base !== 0 ? (metric.direction === 'lower_is_better' ? (base / value - 1) * 100 : (value / base - 1) * 100) : null)});
+    });
+    $('trendTitle').textContent = `${currentName()} · ${state.counterDisplay === 'combined' ? 'IPC + 性能计数器' : '性能计数器'}趋势`;
+    $('trendSub').textContent = `横轴为 commit · 相对基线 A · 正值表示 IPC 或指标朝有利方向变化 · 各序列独立纵向缩放 · ${state.counterUnit === 'per_kinst' ? '每千指令' : '原始计数'}`;
+    $('valueMode').hidden = true;
+    $('legend').innerHTML = series.map(item => `<span class="legend-item" style="--legend-color:${item.color}"><i class="legend-line"></i>${escapeHtml(item.label)}</span>`).join('');
+    drawMultiChart('trend', series);
+    return;
+  }
+  $('valueMode').hidden = false;
   const rawValues = absoluteValues();
   const values = displayValues(rawValues);
   const label = metricLabel();
   $('trendTitle').textContent = `${currentName()} · ${label}趋势`;
   $('trendSub').textContent = state.mode === 'relative' ? '相对基线 A，正值统一表示性能改善' : state.level === 'counter' ? `${selectedCounterMetric().category} · ${counterUnitLabel()} · ${selectedCounterMetric().direction === 'lower_is_better' ? '越低越好' : '越高越好'} · final PERF dump` : state.metric === 'score' ? '评分文件发布值；固定 gcc16、RVA23、novec 口径' : state.metric === 'index' ? '首个 commit = 100；跨 workload 仅聚合相对变化' : '固定切片集与实验配置，按 committer time 排列';
-  $('legend').textContent = currentName();
+  $('legend').innerHTML = `<span class="legend-item"><i class="legend-line"></i>${escapeHtml(currentName())}</span>`;
   const format = state.mode === 'relative' ? value => `${signed(value, 2)}%` : state.level === 'counter' ? (state.counterUnit === 'per_kinst' ? value => value.toFixed(2) : formatCounterValue) : state.metric === 'index' ? value => value.toFixed(2) : value => value.toFixed(3);
   drawChart('trend', values, {format});
 }
@@ -857,7 +999,7 @@ function render() {
   syncControls();
   const counterMode = state.level === 'counter';
   if (counterMode) {
-    $('sliceCount').textContent = `${model.counterSlices.length} 个 mcf`;
+    $('sliceCount').textContent = `${model.counterSlices.length} 个切片`;
     $('observationCount').textContent = `${model.counterObservationCount} / ${model.counterSlices.length * model.counterMetrics.length * model.commits.length}`;
     $('coverageText').textContent = `${(model.counterObservationCount / (model.counterSlices.length * model.counterMetrics.length * model.commits.length) * 100).toFixed(3)}% counter 覆盖`;
   } else {
@@ -911,7 +1053,10 @@ function bindEvents() {
     render();
   };
   $('metric').onchange = event => {
-    if (state.level === 'counter') state.counterMetric = event.target.value;
+    if (state.level === 'counter') {
+      state.counterMetric = event.target.value;
+      if (!selectedCounterMetricIds().includes(state.counterMetric)) state.selectedCounterMetrics = [...selectedCounterMetricIds(), state.counterMetric];
+    }
     else state.metric = event.target.value;
     render();
   };
@@ -919,10 +1064,16 @@ function bindEvents() {
   $('target').onchange = event => { state.target = Number(event.target.value); render(); };
   $('sort').onchange = event => { state.sort = event.target.value; renderSlices(); };
   $('counterUnit').onchange = event => { state.counterUnit = event.target.value; render(); };
+  document.querySelectorAll('#counterDisplayMode [data-display]').forEach(button => button.onclick = () => {
+    state.counterDisplay = button.dataset.display;
+    render();
+  });
+  $('selectAllCounters').onclick = () => { state.selectedCounterMetrics = model.counterMetrics.map(metric => metric.metric_id); render(); };
+  $('clearCounters').onclick = () => { state.selectedCounterMetrics = []; state.counterDisplay = 'ipc'; render(); };
   document.querySelectorAll('#relationMode [data-rel]').forEach(button => button.onclick = () => { state.relationMode = button.dataset.rel; render(); });
   document.querySelectorAll('[data-mode]').forEach(button => button.onclick = () => { state.mode = button.dataset.mode; render(); });
   $('reset').onclick = () => {
-    state = {...state, level:'suite', metric:'score', base:0, target:model.commits.length - 1, mode:'absolute', sort:'impact'};
+    state = {...state, level:'suite', metric:'score', base:0, target:model.commits.length - 1, mode:'absolute', sort:'impact', counterDisplay:'combined', selectedCounterMetrics:[state.counterMetric]};
     render();
   };
   $('export').onclick = exportComparison;
