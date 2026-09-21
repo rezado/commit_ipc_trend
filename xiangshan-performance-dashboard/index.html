@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>香山 · SPEC06 IPC 性能看板</title>
+  <meta name="description" content="香山 SPEC06 切片 IPC 回归分析看板">
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23265ecf'/%3E%3Cpath d='M5 23L12 14L18 19L27 7' fill='none' stroke='white' stroke-width='3'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="style.css?v=2026-09-21">
+</head>
+<body>
+  <aside class="rail">
+    <a class="brand" href="#top"><span class="mark">χ</span><span>香山<span class="brand-sub">PERFORMANCE LAB</span></span></a>
+    <div class="nav-label">分析工作台</div>
+    <a class="nav active" href="#top"><span aria-hidden="true">▤</span> 性能总览</a>
+    <a class="nav" href="#workloads"><span aria-hidden="true">▦</span> Workload 对比</a>
+    <a class="nav" href="#slices"><span aria-hidden="true">⌕</span> 切片分析</a>
+    <a id="counterNav" class="nav" href="#top"><span aria-hidden="true">⌁</span> 性能计数器</a>
+    <a class="nav" href="#commits"><span aria-hidden="true">⑂</span> 提交区间</a>
+    <div class="rail-bottom">
+      <div class="version">SPEC CPU2006</div>
+      <p>kunminghu-v3<br>DefaultConfig · 固定切片集</p>
+      <span class="live-dot"></span> 实测数据
+    </div>
+  </aside>
+
+  <main id="top">
+    <header>
+      <div class="crumb">香山 / 性能回归 / <strong>SPEC06</strong></div>
+      <div class="header-actions">
+        <span class="tag">IPC TREND</span>
+        <button id="reset" class="quiet" type="button" title="恢复默认筛选">↺ <span>重置</span></button>
+        <button id="export" class="dark-btn" type="button" title="导出当前 A/B 切片数据">导出 A/B <span aria-hidden="true">↓</span></button>
+      </div>
+    </header>
+
+    <section class="heading">
+      <div><h1>香山主线 SPEC06 性能看板</h1><p>按主线 commit 追踪官方分数与加权 IPC，定位 workload 和 SimPoint 切片变化。</p></div>
+      <div class="scope-note"><span id="scopeRange">2026-09 主线窗口</span><span id="scopeStats">正在读取数据…</span></div>
+    </section>
+
+    <div id="loading" class="notice"><span class="loader" aria-hidden="true"></span><span>正在载入性能数据…</span></div>
+    <div id="error" class="notice error-notice" hidden></div>
+
+    <div id="dashboard" hidden>
+      <section class="filters" aria-label="分析筛选">
+        <label>分析粒度<select id="level"><option value="suite">套件总览</option><option value="workload">Workload</option><option value="slice">具体切片</option><option value="counter">性能计数器</option></select></label>
+        <label class="entity-filter">分析对象<select id="entity"></select></label>
+        <label>性能指标<select id="metric"></select></label>
+        <label id="counterUnitLabel" hidden>计数器口径<select id="counterUnit"><option value="raw">原始计数</option><option value="per_kinst">每千指令</option></select></label>
+        <div class="filter-sep"></div>
+        <label>基线 A<select id="base"></select></label>
+        <label>目标 B<select id="target"></select></label>
+      </section>
+
+      <div class="context-line">
+        <span>配置 <b id="configName">DefaultConfig</b></span>
+        <span>切片集 <b id="sliceCount">-</b></span>
+        <span>有效观测 <b id="observationCount">-</b></span>
+        <span class="coverage"><i></i><span id="coverageText">-</span></span>
+      </div>
+
+      <section class="kpis" id="kpis" aria-label="关键指标"></section>
+
+      <section class="panel trend-panel">
+        <div class="panel-head">
+          <div><h2 id="trendTitle">性能趋势</h2><p id="trendSub"></p></div>
+          <div class="segmented" aria-label="显示模式"><button data-mode="absolute" class="selected" type="button">绝对值</button><button data-mode="relative" type="button">相对基线</button></div>
+        </div>
+        <div id="trend" class="chart"></div>
+        <div class="chart-footer"><span><i class="legend-line"></i><span id="legend"></span></span><span>虚线标记 A / B · 点击数据点设置 B</span><span id="hoverReadout"></span></div>
+      </section>
+
+      <section id="counterInsights" class="counter-insights" hidden>
+        <div class="analysis-grid counter-grid">
+          <section class="panel relation-panel">
+            <div class="panel-head">
+              <div><h2>计数器 × IPC 关系</h2><p id="relationSub">每个点是一个 mcf 切片，点大小表示切片权重</p></div>
+              <div class="segmented" id="relationMode" role="group" aria-label="相关性视角">
+                <button data-rel="level" class="selected" type="button">切片水平</button>
+                <button data-rel="delta" type="button">A→B 变化</button>
+                <button data-rel="panel" type="button">全区间面板</button>
+              </div>
+            </div>
+            <div id="relationScatter" class="chart scatter-chart"></div>
+            <div id="relationStats" class="relation-stats"></div>
+          </section>
+
+          <section class="panel ranking-panel">
+            <div class="panel-head"><div><h2>计数器相关性排行</h2><p>Spearman ρ · 点击切换计数器</p></div><span class="tiny-label" id="rankingCount"></span></div>
+            <div id="correlationBars" class="correlation-bars"></div>
+          </section>
+        </div>
+
+        <section class="panel matrix-panel">
+          <div class="panel-head"><div><h2>计数器 × 切片矩阵</h2><p id="matrixSub">A→B 相对变化；绿色代表该计数器朝有利方向变化，点击行切换计数器</p></div><span class="tiny-label">按 IPC 变化排序</span></div>
+          <div class="table-scroll"><table id="counterMatrix" class="counter-matrix"></table></div>
+          <div class="matrix-legend"><span>不利方向</span><i class="heat-r2"></i><i class="heat-r1"></i><i class="heat-n"></i><i class="heat-g1"></i><i class="heat-g2"></i><span>有利方向</span><span class="matrix-legend-note">不同指标独立着色；单元格保留归一化后的相对变化</span></div>
+        </section>
+      </section>
+
+      <div id="workloads" class="analysis-grid">
+        <section class="panel heat-panel">
+          <div class="panel-head"><div><h2>Workload 变化矩阵</h2><p>相对基线 A 的加权 IPC 变化，正值表示提升</p></div><span class="tiny-label">点击单元格下钻</span></div>
+          <div class="heat-wrap"><table id="heatTable" class="heat-table"></table></div>
+          <div class="heat-legend"><span>退化</span><i class="heat-r2"></i><i class="heat-r1"></i><i class="heat-n"></i><i class="heat-g1"></i><i class="heat-g2"></i><span>提升</span></div>
+        </section>
+
+        <section class="panel movers-panel">
+          <div class="panel-head"><div><h2>A/B 变化贡献</h2><p>对套件归一化指数的对数贡献</p></div><span class="tiny-label">Top 12</span></div>
+          <div id="bars"></div>
+          <div class="net-row"><span>套件净变化</span><strong id="net"></strong></div>
+          <p class="formula-note">贡献按 workload 等权聚合；图中只展示绝对变化最大的 12 项。</p>
+        </section>
+      </div>
+
+      <section id="slices" class="panel">
+        <div class="panel-head">
+          <div><h2 id="sliceTitle">切片 A/B 对比</h2><p>权重在当前 workload 内使用；缺测结果不补零。</p></div>
+          <label class="inline-label">排序<select id="sort"><option value="impact">加权 CPI 影响</option><option value="change">IPC 变化幅度</option><option value="weight">切片权重</option></select></label>
+        </div>
+        <div class="table-scroll"><table class="result-table"><thead><tr><th>切片</th><th>权重</th><th id="valueAHead">IPC · A</th><th id="valueBHead">IPC · B</th><th id="changeHead">IPC 变化</th><th id="impactHead">加权 ΔCPI</th><th>判定</th></tr></thead><tbody id="sliceRows"></tbody></table></div>
+        <div id="sliceSummary" class="slice-summary"></div>
+      </section>
+
+      <section id="commits" class="panel transitions-panel">
+        <div class="panel-head"><div><h2>相邻观测健康度</h2><p>按切片统计，稳定区间为 ±0.5% IPC</p></div><span id="transitionCount" class="tiny-label"></span></div>
+        <div id="transitions" class="transitions"></div>
+      </section>
+
+      <section class="panel commit-panel">
+        <div class="panel-head"><div><h2>主线 Commit 记录</h2><p>仅包含 kunminghu-v3 第一父链，趋势轴采用 committer time 排序</p></div><span id="missingBadge" class="missing-badge"></span></div>
+        <div class="table-scroll"><table class="commit-table"><thead><tr><th>序号</th><th>Commit</th><th>提交时间</th><th>变更说明</th><th>覆盖状态</th></tr></thead><tbody id="commitRows"></tbody></table></div>
+      </section>
+
+      <footer><span>香山 kunminghu-v3 主线 · 2026-09 SPEC06 实测数据</span><span>Workload IPC = 1 ÷ 加权 CPI · 套件指数 = workload 相对 IPC 的几何平均</span></footer>
+    </div>
+  </main>
+  <script src="app.js?v=2026-09-21"></script>
+</body>
+</html>

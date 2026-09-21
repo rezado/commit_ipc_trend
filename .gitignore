@@ -4,3 +4,11 @@ __pycache__/
 .venv/
 venv/
 *~
+
+# Generated run outputs and dashboard data, rebuilt by
+# tools/build_mainline_september_dashboard.py + tools/import_mainline_counters.py.
+/outputs/
+
+# Local browser-test output and the packaged source hand-off.
+/test-results/
+/xiangshan-performance-dashboard-source.zip
