@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import math
 import sqlite3
+import subprocess
+from pathlib import Path
 from typing import Any, Iterable
 
 from .metrics import cpi_contributions, degradation_percent
@@ -62,6 +64,27 @@ class TrendService:
                 )
             ],
         }
+
+    def select_baseline(self, target_run_id: str, git_repo: Path) -> dict[str, Any]:
+        """Nearest tested, published first-parent ancestor in the same comparison group."""
+        target = self._resolve_run(target_run_id)
+        result = subprocess.run(
+            ["git", "-C", str(git_repo), "rev-list", "--first-parent", target["commit_sha"]],
+            text=True, capture_output=True, check=True,
+        )
+        for sha in result.stdout.splitlines()[1:]:
+            candidates = _rows(self.connection.execute(
+                """SELECT r.*, c.short_sha, c.commit_time, c.subject FROM runs r
+                     JOIN commits c ON c.commit_sha = r.commit_sha
+                    WHERE r.commit_sha = ? AND r.comparison_key = ? AND r.slice_set_id = ?
+                      AND r.status = 'published'
+                    ORDER BY r.snapshot_at DESC""",
+                (sha, target["comparison_key"], target["slice_set_id"]),
+            ))
+            if candidates:
+                return {"status": "found", "baseline": self._public_run(candidates[0]),
+                        "target": self._public_run(target), "relation": "first_parent_tested_ancestor"}
+        return {"status": "not_found", "baseline": None, "target": self._public_run(target)}
 
     def get_trend(
         self,

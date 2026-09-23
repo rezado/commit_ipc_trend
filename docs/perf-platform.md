@@ -56,10 +56,11 @@ python3 tools/ingest_completed_runs.py \
 4. Serve the dashboard on loopback, then access through your team's authenticated reverse proxy if needed:
 
 ```bash
-python3 tools/serve_perf_platform.py --db /srv/perf/trend.sqlite --host 127.0.0.1 --port 8000
+python3 tools/serve_perf_platform.py --db /srv/perf/trend.sqlite \
+  --git-repo /path/to/XiangShan --host 127.0.0.1 --port 8000
 ```
 
-The page supports selecting two runs and a workload, shows weighted CPI contributions, data coverage and source paths. JSON endpoints: `/api/runs`, `/api/workloads?run=...`, `/api/compare?a=...&b=...&workload=...`, `/api/trend?level=workload&object=mcf&metric=equivalent_ipc`, `/api/artifacts?run=...`. The existing richer static trend dashboard remains available through `tools/serve_dashboard.py` for the historical mainline export; the new page reads the live SQLite DB.
+The page selects the nearest published and comparable **tested first-parent ancestor** as a baseline when `--git-repo` is supplied; manual A/B selection remains available. It shows weighted CPI contributions, data coverage and source paths. JSON endpoints: `/api/runs`, `/api/workloads?run=...`, `/api/baseline?run=...`, `/api/compare?a=...&b=...&workload=...`, `/api/trend?level=workload&object=mcf&metric=equivalent_ipc`, `/api/artifacts?run=...`. The existing richer static trend dashboard remains available through `tools/serve_dashboard.py` for the historical mainline export; the new page reads the live SQLite DB.
 
 ## Investigate a regression
 

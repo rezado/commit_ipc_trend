@@ -41,11 +41,14 @@ async function init(){runs=await (await fetch('/api/runs')).json();
  options('a',runs.map(r=>({value:r.run_id,label:label(r)})));
  options('b',runs.map(r=>({value:r.run_id,label:label(r)})));
  if(runs.length>1){$('a').selectedIndex=1;$('b').selectedIndex=0;}
- await workloads();}
+ await workloads();await baseline();}
+async function baseline(){try{let r=await(await fetch('/api/baseline?run='+encodeURIComponent($('b').value))).json();
+ if(r.status==='found'){$('a').value=r.baseline.run_id;$('info').textContent='已选择第一父链最近的可比基线';}
+}catch(e){/* Manual A/B remains available without a Git checkout. */}}
 async function workloads(){let r=runs.find(x=>x.run_id===$('b').value); if(!r)return;
  let names=await(await fetch('/api/workloads?run='+encodeURIComponent(r.run_id))).json();
  options('w',names.map(x=>({value:x,label:x})));}
-$('b').onchange=workloads;
+$('b').onchange=async()=>{await workloads();await baseline();};
 $('go').onclick=async()=>{let p=new URLSearchParams({a:$('a').value,b:$('b').value,workload:$('w').value});
 try{let r=await(await fetch('/api/compare?'+p)).json();
  $('info').textContent=r.status==='comparable'?'比较条件一致 · '+r.mode:'无法进行严格比较：'+(r.reasons||[r.error]).join(', ');
@@ -57,7 +60,7 @@ try{let r=await(await fetch('/api/compare?'+p)).json();
 init().catch(e=>$('info').textContent=String(e));</script></html>"""
 
 
-def handler_for(db: Path):
+def handler_for(db: Path, git_repo: Path | None = None):
     class Handler(BaseHTTPRequestHandler):
         def do_GET(self):
             parsed = urlsplit(self.path)
@@ -82,6 +85,10 @@ def handler_for(db: Path):
                                 (q["run"][0],))]
                         elif parsed.path == "/api/compare":
                             value = service.compare_points(q["a"][0], q["b"][0], object_id=q["workload"][0])
+                        elif parsed.path == "/api/baseline":
+                            if git_repo is None:
+                                raise ValueError("baseline selection needs --git-repo")
+                            value = service.select_baseline(q["run"][0], git_repo)
                         elif parsed.path == "/api/trend":
                             value = service.get_trend(q["level"][0], q["object"], q["metric"][0],
                                                       comparison_key=q.get("comparison_key", [None])[0])
@@ -106,12 +113,13 @@ def handler_for(db: Path):
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--db", type=Path, required=True)
+    p.add_argument("--git-repo", type=Path, help="XiangShan checkout for first-parent baseline selection")
     p.add_argument("--host", default="127.0.0.1")
     p.add_argument("--port", type=int, default=8000)
     args = p.parse_args()
     with Store(args.db, read_only=True) as store:
         store.validate_schema()
-    ThreadingHTTPServer((args.host, args.port), handler_for(args.db)).serve_forever()
+    ThreadingHTTPServer((args.host, args.port), handler_for(args.db, args.git_repo)).serve_forever()
 
 
 if __name__ == "__main__":

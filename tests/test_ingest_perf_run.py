@@ -85,8 +85,11 @@ class PerfRunIngestTest(unittest.TestCase):
                 self.assertEqual(result["status"], "comparable")
                 self.assertEqual(result["total_slice_count"], 2)
                 self.assertAlmostEqual(result["weighted_cpi_delta"], 0.07)
+                baseline = TrendService(store).select_baseline(result["run_b"]["run_id"], repo)
+                self.assertEqual(baseline["status"], "found")
+                self.assertEqual(baseline["baseline"]["run_id"], result["run_a"]["run_id"])
 
-            server = ThreadingHTTPServer(("127.0.0.1", 0), handler_for(db))
+            server = ThreadingHTTPServer(("127.0.0.1", 0), handler_for(db, repo))
             thread = threading.Thread(target=server.serve_forever, daemon=True)
             thread.start()
             try:
@@ -97,6 +100,8 @@ class PerfRunIngestTest(unittest.TestCase):
                                    "b": result["run_b"]["run_id"], "workload": "mcf"})
                 with urlopen(url + "/api/compare?" + query) as response:
                     self.assertEqual(json.load(response)["status"], "comparable")
+                with urlopen(url + "/api/baseline?" + urlencode({"run": result["run_b"]["run_id"]})) as response:
+                    self.assertEqual(json.load(response)["status"], "found")
             finally:
                 server.shutdown()
                 thread.join(timeout=2)
