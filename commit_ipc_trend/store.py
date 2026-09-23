@@ -158,6 +158,18 @@ CREATE TABLE IF NOT EXISTS import_batches (
   errors_json TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS analysis_runs (
+  analysis_id TEXT PRIMARY KEY,
+  run_a TEXT NOT NULL REFERENCES runs(run_id),
+  run_b TEXT NOT NULL REFERENCES runs(run_id),
+  kind TEXT NOT NULL,
+  status TEXT NOT NULL,
+  input_json TEXT NOT NULL,
+  result_uri TEXT NOT NULL,
+  analyzer_sha256 TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_runs_commit ON runs(commit_sha);
 CREATE INDEX IF NOT EXISTS idx_runs_comparison ON runs(comparison_key, status);
 CREATE INDEX IF NOT EXISTS idx_aggregates_lookup

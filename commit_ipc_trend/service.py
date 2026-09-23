@@ -178,8 +178,8 @@ class TrendService:
         object_id: str = "mcf",
         top_n: int | None = None,
     ) -> dict[str, Any]:
-        if level != "workload" or object_id != "mcf":
-            raise ValueError("demo comparison currently supports workload=mcf")
+        if level != "workload":
+            raise ValueError("comparison supports workload level only")
         a = self._resolve_run(run_a)
         b = self._resolve_run(run_b)
         reasons = []
@@ -199,6 +199,23 @@ class TrendService:
 
         rows_a = self._slice_rows(a["run_id"], object_id)
         rows_b = self._slice_rows(b["run_id"], object_id)
+        expected = {
+            row[0] for row in self.connection.execute(
+                """SELECT s.slice_id FROM slice_set_members m
+                     JOIN slices s ON s.slice_id = m.slice_id
+                    WHERE m.slice_set_id = ? AND s.workload = ?""",
+                (a["slice_set_id"], object_id),
+            )
+        }
+        if not expected:
+            raise ValueError(f"workload not found in slice set: {object_id}")
+        if {row["slice_id"] for row in rows_a} != expected or {row["slice_id"] for row in rows_b} != expected:
+            return {
+                "status": "incomparable",
+                "reasons": ["missing_slice_result"],
+                "run_a": self._public_run(a),
+                "run_b": self._public_run(b),
+            }
         if top_n is not None:
             if top_n < 1:
                 raise ValueError("top_n must be positive")
@@ -216,11 +233,8 @@ class TrendService:
                 "run_b": self._public_run(b),
             }
 
-        total_weight = float(
-            self.connection.execute(
-                "SELECT sum(weight) FROM slice_set_members WHERE slice_set_id = ?",
-                (a["slice_set_id"],),
-            ).fetchone()[0]
+        total_weight = math.fsum(
+            row["weight"] for row in self._slice_rows(a["run_id"], object_id)
         )
         if math.isclose(total_weight, 1.0, abs_tol=1e-5):
             total_weight = 1.0
@@ -238,7 +252,8 @@ class TrendService:
         coverage = selected_weight / total_weight
         if math.isclose(coverage, 1.0, abs_tol=1e-5):
             coverage = 1.0
-        diagnostic = top_n is not None or not math.isclose(coverage, 1.0, abs_tol=1e-5)
+        diagnostic = (top_n is not None or not math.isclose(coverage, 1.0, abs_tol=1e-5)
+                      or not math.isclose(total_weight, 1.0, abs_tol=1e-5))
         diagnostic_cpi_a = weighted_sum_a / selected_weight if selected_weight else None
         diagnostic_cpi_b = weighted_sum_b / selected_weight if selected_weight else None
         comparison_cpi_a = diagnostic_cpi_a if diagnostic else weighted_sum_a
@@ -252,15 +267,10 @@ class TrendService:
             "run_a": self._public_run(a),
             "run_b": self._public_run(b),
             "object_id": object_id,
-            "coverage_weight": coverage,
+            "coverage_weight": selected_weight,
             "selected_weight": selected_weight,
             "selected_slice_count": len(rows_a),
-            "total_slice_count": int(
-                self.connection.execute(
-                    "SELECT count(*) FROM slice_set_members WHERE slice_set_id = ?",
-                    (a["slice_set_id"],),
-                ).fetchone()[0]
-            ),
+            "total_slice_count": len(expected),
             "weighted_cpi_a": None if diagnostic else weighted_sum_a,
             "weighted_cpi_b": None if diagnostic else weighted_sum_b,
             "weighted_cpi_delta": None if diagnostic else weighted_sum_delta,
