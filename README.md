@@ -4,6 +4,8 @@
 
 按完成标记增量导入 perf-trigger 运行、查看 A/B 切片贡献、生成计数器证据摘要，以及调用 XiangShan top-down/rolling 的部署与命令，见 [docs/perf-platform.md](docs/perf-platform.md)。
 
+从已完成的回归到切片、计数器、Top-down 和 Rolling 的具体操作，见 [性能分析 Flow](docs/perf-analysis-flow.zh.md)。
+
 这是一个基于 SQLite 的 XiangShan 性能趋势看板。系统将 CI 性能报告离线解析并导入数据库，前端只读取数据库导出的规范化数据，不在浏览器中扫描原始日志。
 
 ## 数据链路
