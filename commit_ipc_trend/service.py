@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import json
 import math
 import sqlite3
 import subprocess
 from pathlib import Path
 from typing import Any, Iterable
 
+from .anomalies import counter_clues, select_slice_candidates
 from .metrics import cpi_contributions, degradation_percent
 from .store import Store
 
@@ -176,7 +178,7 @@ class TrendService:
         result = _rows(cursor)
         previous: dict[str, dict[str, Any]] = {}
         for row in result:
-            row["experiment"] = json_loads(row.pop("experiment_json"))
+            row["experiment"] = json.loads(row.pop("experiment_json"))
             prior = previous.get(row["object_id"])
             reasons = []
             if prior:
@@ -202,7 +204,7 @@ class TrendService:
         top_n: int | None = None,
     ) -> dict[str, Any]:
         if level != "workload":
-            raise ValueError("comparison supports workload level only")
+            raise ValueError("comparison currently supports level=workload")
         a = self._resolve_run(run_a)
         b = self._resolve_run(run_b)
         reasons = []
@@ -220,24 +222,32 @@ class TrendService:
                 "run_b": self._public_run(b),
             }
 
-        rows_a = self._slice_rows(a["run_id"], object_id)
-        rows_b = self._slice_rows(b["run_id"], object_id)
-        expected = {
-            row[0] for row in self.connection.execute(
-                """SELECT s.slice_id FROM slice_set_members m
-                     JOIN slices s ON s.slice_id = m.slice_id
-                    WHERE m.slice_set_id = ? AND s.workload = ?""",
-                (a["slice_set_id"], object_id),
-            )
-        }
+        expected = self._workload_members(a["slice_set_id"], object_id)
         if not expected:
             raise ValueError(f"workload not found in slice set: {object_id}")
-        if {row["slice_id"] for row in rows_a} != expected or {row["slice_id"] for row in rows_b} != expected:
+        rows_a = self._slice_rows(a["run_id"], object_id)
+        rows_b = self._slice_rows(b["run_id"], object_id)
+        expected_ids = {row["slice_id"] for row in expected}
+        actual_a = {row["slice_id"] for row in rows_a}
+        actual_b = {row["slice_id"] for row in rows_b}
+        missing_a = sorted(expected_ids - actual_a)
+        missing_b = sorted(expected_ids - actual_b)
+        extra_a = sorted(actual_a - expected_ids)
+        extra_b = sorted(actual_b - expected_ids)
+        if missing_a or missing_b or extra_a or extra_b:
             return {
                 "status": "incomparable",
-                "reasons": ["missing_slice_result"],
+                "reasons": ["slice_membership_incomplete"],
                 "run_a": self._public_run(a),
                 "run_b": self._public_run(b),
+                "object_id": object_id,
+                "membership": {
+                    "expected_slice_count": len(expected),
+                    "missing_in_a": missing_a,
+                    "missing_in_b": missing_b,
+                    "extra_in_a": extra_a,
+                    "extra_in_b": extra_b,
+                },
             }
         if top_n is not None:
             if top_n < 1:
@@ -248,7 +258,10 @@ class TrendService:
             }
             rows_a = [row for row in rows_a if row["slice_id"] in selected]
             rows_b = [row for row in rows_b if row["slice_id"] in selected]
-        if any(row["status"] != "valid" for row in [*rows_a, *rows_b]):
+        if any(
+            row["status"] != "valid" or row["cpi"] is None
+            for row in [*rows_a, *rows_b]
+        ):
             return {
                 "status": "incomparable",
                 "reasons": ["invalid_slice_result"],
@@ -256,9 +269,7 @@ class TrendService:
                 "run_b": self._public_run(b),
             }
 
-        total_weight = math.fsum(
-            row["weight"] for row in self._slice_rows(a["run_id"], object_id)
-        )
+        total_weight = math.fsum(float(row["weight"]) for row in expected)
         if math.isclose(total_weight, 1.0, abs_tol=1e-5):
             total_weight = 1.0
         selected_weight = math.fsum(row["weight"] for row in rows_a)
@@ -282,7 +293,7 @@ class TrendService:
         comparison_cpi_a = diagnostic_cpi_a if diagnostic else weighted_sum_a
         comparison_cpi_b = diagnostic_cpi_b if diagnostic else weighted_sum_b
         warnings = []
-        if json_loads(a["experiment_json"]).get("comparison_status") == "provisional":
+        if json.loads(a["experiment_json"]).get("comparison_status") == "provisional":
             warnings.append("comparison_key_is_provisional")
         return {
             "status": "comparable",
@@ -316,6 +327,242 @@ class TrendService:
             "warnings": warnings,
         }
 
+    def detect_anomalies(
+        self,
+        current: str,
+        baseline: str | None = None,
+        fixed_baseline: str | None = None,
+        workloads: Iterable[str] | None = None,
+        workload_threshold_pct: float = 0.5,
+        slice_threshold_pct: float = 0.5,
+        contribution_top_n: int = 10,
+        counter_top_n: int = 5,
+        counter_change_threshold_pct: float = 5.0,
+        git_repo: Path | None = None,
+    ) -> dict[str, Any]:
+        """Build a deterministic anomaly report from existing A/B observations.
+
+        This deliberately does not claim statistical significance or schedule reruns.
+        A workload is anomalous when weighted CPI exceeds the configured practical
+        threshold. Slice candidates are selected by CPI degradation and, for a
+        regressed workload, positive weighted-CPI contribution.
+        """
+        if workload_threshold_pct < 0 or slice_threshold_pct < 0:
+            raise ValueError("degradation thresholds must be non-negative")
+        if counter_change_threshold_pct < 0:
+            raise ValueError("counter change threshold must be non-negative")
+        if contribution_top_n < 1 or counter_top_n < 0:
+            raise ValueError("top_n values must be positive (counter_top_n may be zero)")
+
+        current_run = self._resolve_run(current)
+        pairs: list[tuple[str, dict[str, Any], str]] = []
+        if baseline is None and git_repo is not None:
+            selected_baseline = self.select_baseline(current, git_repo)
+            if selected_baseline["status"] == "found":
+                previous = self._resolve_run(selected_baseline["baseline"]["run_id"])
+                pairs.append(("previous", previous, selected_baseline["relation"]))
+        elif baseline is None:
+            selected = self._select_previous_run(current_run)
+            if selected is not None:
+                previous, basis = selected
+                pairs.append(("previous", previous, basis))
+        else:
+            pairs.append(("previous", self._resolve_run(baseline), "explicit"))
+        if fixed_baseline is not None:
+            fixed = self._resolve_run(fixed_baseline)
+            if all(row[1]["run_id"] != fixed["run_id"] for row in pairs):
+                pairs.append(("fixed", fixed, "explicit"))
+
+        available_workloads = self._run_workloads(current_run["run_id"])
+        selected_workloads = list(dict.fromkeys(workloads or available_workloads))
+        if not selected_workloads:
+            raise ValueError("no workloads selected")
+        unknown = sorted(set(selected_workloads) - set(available_workloads))
+        if unknown:
+            raise ValueError(f"workloads not found for current run: {unknown}")
+
+        policy = {
+            "workload_cpi_degradation_pct": workload_threshold_pct,
+            "slice_cpi_degradation_pct": slice_threshold_pct,
+            "weighted_contribution_top_n": contribution_top_n,
+            "counter_change_pct": counter_change_threshold_pct,
+            "counter_top_n": counter_top_n,
+            "statistical_significance": "not_assessed_single_observation",
+            "rerun_required": False,
+        }
+        comparisons = [
+            self._detect_pair(
+                current_run,
+                base,
+                label,
+                basis,
+                selected_workloads,
+                policy,
+            )
+            for label, base, basis in pairs
+        ]
+        return {
+            "status": "ok" if comparisons else "no_baseline",
+            "current": self._public_run(current_run),
+            "policy": policy,
+            "comparison_count": len(comparisons),
+            "comparisons": comparisons,
+            "warnings": [
+                "single_observation_effect_size_only",
+                "counter_changes_are_diagnostic_clues_not_causal_proof",
+            ],
+        }
+
+    def _detect_pair(
+        self,
+        current: dict[str, Any],
+        baseline: dict[str, Any],
+        label: str,
+        baseline_basis: str,
+        workloads: list[str],
+        policy: dict[str, Any],
+    ) -> dict[str, Any]:
+        workload_rows: list[dict[str, Any]] = []
+        incomparable: list[dict[str, Any]] = []
+        anomalous_slice_count = 0
+        for workload in workloads:
+            comparison = self.compare_points(
+                baseline["run_id"], current["run_id"], object_id=workload
+            )
+            if comparison["status"] != "comparable":
+                incomparable.append(
+                    {"workload": workload, "reasons": comparison.get("reasons", [])}
+                )
+                continue
+            degradation = comparison["cpi_degradation_percent"]
+            workload_anomaly = bool(
+                degradation is not None
+                and degradation > policy["workload_cpi_degradation_pct"]
+            )
+            candidates = select_slice_candidates(
+                comparison["slices"],
+                workload_anomaly,
+                policy["slice_cpi_degradation_pct"],
+                policy["weighted_contribution_top_n"],
+            )
+            for candidate in candidates:
+                candidate["counter_clues"] = self._counter_clues(
+                    baseline["run_id"],
+                    current["run_id"],
+                    candidate["slice_id"],
+                    policy["counter_change_pct"],
+                    policy["counter_top_n"],
+                )
+            anomalous_slice_count += len(candidates)
+            workload_rows.append(
+                {
+                    "workload": workload,
+                    "comparison_mode": comparison["mode"],
+                    "warnings": comparison["warnings"],
+                    "is_anomaly": workload_anomaly,
+                    "cpi_degradation_percent": degradation,
+                    "weighted_cpi_a": comparison["weighted_cpi_a"],
+                    "weighted_cpi_b": comparison["weighted_cpi_b"],
+                    "weighted_cpi_delta": comparison["weighted_cpi_delta"],
+                    "equivalent_ipc_a": comparison["equivalent_ipc_a"],
+                    "equivalent_ipc_b": comparison["equivalent_ipc_b"],
+                    "coverage_weight": comparison["coverage_weight"],
+                    "slice_count": comparison["selected_slice_count"],
+                    "anomalous_slice_count": len(candidates),
+                    "anomalous_slices": candidates,
+                }
+            )
+        workload_rows.sort(
+            key=lambda row: row["cpi_degradation_percent"]
+            if row["cpi_degradation_percent"] is not None
+            else -math.inf,
+            reverse=True,
+        )
+        return {
+            "label": label,
+            "baseline_basis": baseline_basis,
+            "status": "comparable" if not incomparable else "partially_comparable",
+            "baseline": self._public_run(baseline),
+            "current": self._public_run(current),
+            "summary": {
+                "workload_count": len(workload_rows),
+                "anomalous_workload_count": sum(row["is_anomaly"] for row in workload_rows),
+                "anomalous_slice_count": anomalous_slice_count,
+                "incomparable_workload_count": len(incomparable),
+            },
+            "workloads": workload_rows,
+            "incomparable_workloads": incomparable,
+        }
+
+    def _counter_clues(
+        self,
+        run_a: str,
+        run_b: str,
+        slice_id: str,
+        threshold_pct: float,
+        top_n: int,
+    ) -> list[dict[str, Any]]:
+        if top_n == 0:
+            return []
+        rows = _rows(
+            self.connection.execute(
+                """
+                SELECT cv.run_id, cv.metric_id, cv.semantic_version, cv.value,
+                       cv.availability, cv.window_id, md.display_name, md.category,
+                       md.unit, md.direction
+                  FROM counter_values cv
+                  JOIN metric_definitions md
+                    ON md.metric_id = cv.metric_id
+                   AND md.semantic_version = cv.semantic_version
+                 WHERE cv.run_id IN (?, ?) AND cv.slice_id = ?
+                 ORDER BY cv.metric_id, cv.semantic_version, cv.run_id
+                """,
+                (run_a, run_b, slice_id),
+            )
+        )
+        return counter_clues(rows, run_a, run_b, threshold_pct, top_n)
+
+    def _select_previous_run(
+        self, current: dict[str, Any]
+    ) -> tuple[dict[str, Any], str] | None:
+        parents = json.loads(current["parents_json"])
+        for parent in parents:
+            candidates = self._compatible_prior_runs(current, commit_sha=parent)
+            if candidates:
+                return candidates[0], "tested_parent"
+        candidates = self._compatible_prior_runs(current, before_epoch=current["commit_epoch"])
+        if candidates:
+            return candidates[0], "nearest_prior_compatible"
+        return None
+
+    def _compatible_prior_runs(
+        self,
+        current: dict[str, Any],
+        commit_sha: str | None = None,
+        before_epoch: int | None = None,
+    ) -> list[dict[str, Any]]:
+        condition = "AND r.commit_sha = ?" if commit_sha is not None else "AND c.commit_epoch < ?"
+        value: Any = commit_sha if commit_sha is not None else before_epoch
+        return _rows(
+            self.connection.execute(
+                f"""
+                SELECT r.*, c.short_sha, c.commit_time, c.commit_epoch, c.subject,
+                       c.parents_json
+                  FROM runs r JOIN commits c ON c.commit_sha = r.commit_sha
+                 WHERE r.run_id != ? AND r.status = 'published'
+                   AND r.comparison_key = ? AND r.slice_set_id = ?
+                   {condition}
+                 ORDER BY c.commit_epoch DESC, r.snapshot_at DESC
+                """,
+                (
+                    current["run_id"],
+                    current["comparison_key"],
+                    current["slice_set_id"],
+                    value,
+                ),
+            )
+        )
+
     def get_children(
         self, object_id: str, run_a: str, run_b: str, top_n: int | None = None
     ) -> list[dict[str, Any]]:
@@ -341,7 +588,8 @@ class TrendService:
         rows = _rows(
             self.connection.execute(
                 """
-                SELECT r.*, c.short_sha, c.commit_time, c.subject
+                SELECT r.*, c.short_sha, c.commit_time, c.commit_epoch, c.subject,
+                       c.parents_json
                   FROM runs r JOIN commits c ON c.commit_sha = r.commit_sha
                  WHERE r.run_id = ? OR r.commit_sha = ? OR c.short_sha = ?
                  ORDER BY r.snapshot_at DESC
@@ -354,6 +602,38 @@ class TrendService:
         if len(rows) > 1:
             raise ValueError(f"run identifier is ambiguous; use run_id: {identifier}")
         return rows[0]
+
+    def _run_workloads(self, run_id: str) -> list[str]:
+        return [
+            row[0]
+            for row in self.connection.execute(
+                """
+                SELECT DISTINCT s.workload
+                  FROM runs r
+                  JOIN slice_set_members m ON m.slice_set_id = r.slice_set_id
+                  JOIN slices s ON s.slice_id = m.slice_id
+                 WHERE r.run_id = ?
+                 ORDER BY s.workload
+                """,
+                (run_id,),
+            )
+        ]
+
+    def _workload_members(
+        self, slice_set_id: str, workload: str
+    ) -> list[dict[str, Any]]:
+        return _rows(
+            self.connection.execute(
+                """
+                SELECT m.slice_id, m.weight, m.ordinal
+                  FROM slice_set_members m
+                  JOIN slices s ON s.slice_id = m.slice_id
+                 WHERE m.slice_set_id = ? AND s.workload = ?
+                 ORDER BY m.ordinal
+                """,
+                (slice_set_id, workload),
+            )
+        )
 
     def _slice_rows(self, run_id: str, workload: str) -> list[dict[str, Any]]:
         return _rows(
@@ -389,9 +669,3 @@ class TrendService:
                 "slice_set_id",
             )
         }
-
-
-def json_loads(value: str) -> dict[str, Any]:
-    import json
-
-    return json.loads(value)

@@ -23,6 +23,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from commit_ipc_trend.parsers import load_registry, parse_perf_counters  # noqa: E402
+from tools.export_dashboard_anomalies import export_dashboard_anomalies  # noqa: E402
 from tools.export_dashboard_counters import export_dashboard_counters  # noqa: E402
 
 
@@ -240,6 +241,9 @@ def import_counters(args: argparse.Namespace) -> dict[str, Any]:
         connection.close()
 
     export_summary = export_dashboard_counters(args.db, args.output)
+    anomaly_summary = export_dashboard_anomalies(
+        args.db, args.output.with_name("performance-anomalies.json")
+    )
     summary = {
         "database": str(args.db),
         "output": str(args.output),
@@ -253,6 +257,7 @@ def import_counters(args: argparse.Namespace) -> dict[str, Any]:
         "unavailable": imported - available,
         "parse_errors": errors,
         "export": export_summary,
+        "anomaly_export": anomaly_summary,
     }
     if args.audit.is_file():
         audit = json.loads(args.audit.read_text(encoding="utf-8"))

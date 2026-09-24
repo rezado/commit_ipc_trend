@@ -6,13 +6,14 @@
   <title>香山 · SPEC06 IPC 性能看板</title>
   <meta name="description" content="香山 SPEC06 切片 IPC 回归分析看板">
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23265ecf'/%3E%3Cpath d='M5 23L12 14L18 19L27 7' fill='none' stroke='white' stroke-width='3'/%3E%3C/svg%3E">
-  <link rel="stylesheet" href="style.css?v=2026-09-21-3">
+  <link rel="stylesheet" href="style.css?v=2026-09-21-4">
 </head>
 <body>
   <aside class="rail">
     <a class="brand" href="#top"><span class="mark">χ</span><span>香山<span class="brand-sub">PERFORMANCE LAB</span></span></a>
     <div class="nav-label">分析工作台</div>
     <a class="nav active" href="#top"><span aria-hidden="true">▤</span> 性能总览</a>
+    <a class="nav" href="#anomalies"><span aria-hidden="true">⚠</span> 异常清单</a>
     <a class="nav" href="#workloads"><span aria-hidden="true">▦</span> Workload 对比</a>
     <a class="nav" href="#slices"><span aria-hidden="true">⌕</span> 切片分析</a>
     <a id="counterNav" class="nav" href="#top"><span aria-hidden="true">⌁</span> 性能计数器</a>
@@ -80,6 +81,14 @@
       </div>
 
       <section class="kpis" id="kpis" aria-label="关键指标"></section>
+
+      <section id="anomalies" class="panel anomaly-panel">
+        <div class="panel-head">
+          <div><h2>自动异常清单</h2><p>现有观测的确定性 A/B 筛选，不触发复跑；计数器变化仅作为定位线索。</p></div>
+          <span id="anomalyPolicy" class="tiny-label"></span>
+        </div>
+        <div id="anomalyComparisons" class="anomaly-comparisons"></div>
+      </section>
 
       <section class="panel trend-panel">
         <div class="panel-head">
@@ -155,6 +164,6 @@
       <footer><span>香山 kunminghu-v3 主线 · 2026-09 SPEC06 实测数据</span><span>Workload IPC = 1 ÷ 加权 CPI · 套件指数 = workload 相对 IPC 的几何平均</span></footer>
     </div>
   </main>
-  <script src="app.js?v=2026-09-21-3"></script>
+  <script src="app.js?v=2026-09-21-4"></script>
 </body>
 </html>

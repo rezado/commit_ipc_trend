@@ -1,0 +1,241 @@
+{
+  "catalog_revision": "b9636416b81d266f3a3d4d1e46d4e66e6a574bcd",
+  "metrics": {
+    "rob_committed_instructions": {
+      "full_name": "SimTop.cpu.l_soc.core_with_l2.core.backend.inner.ctrlBlock.rob: commitInstr",
+      "definition_id": "src/main/scala/xiangshan/backend/rob/Rob.scala::RobImp::XSPerfAccumulate::\"commitInstr\"::1",
+      "meaning": "ROB 源码 trueCommitCnt 口径的提交指令数，按各有效提交条目的 instrSizeCommit 求和并延迟一拍记入；可用于退休 IPC 分子。 instrSize 与 trace 的 iretire 是两种独立解码，融合场景下勿直接等同于 iretire。",
+      "unit": "指令",
+      "counting": "每周期累加 ifCommitReg(trueCommitCnt)；布尔真值加 1，PopCount 累加所有命中项。",
+      "availability": "实例存在且 enablePerfPrint=true，调用等级 CRITICAL 不低于配置 perfLevel。",
+      "documentation": "backend.md#7ecd8538a4a99a8e"
+    },
+    "rob_committed_uops": {
+      "full_name": "SimTop.cpu.l_soc.core_with_l2.core.backend.inner.ctrlBlock.rob: commitUop",
+      "definition_id": "src/main/scala/xiangshan/backend/rob/Rob.scala::RobImp::XSPerfAccumulate::\"commitUop\"::1",
+      "meaning": "isCommit 时提交有效 ROB 槽位数量；按 commitValid 的 PopCount 统计，不按 instrSize 还原原始指令数。",
+      "unit": "ROB 提交条目",
+      "counting": "每周期累加 ifCommit(commitCnt)；布尔真值加 1，PopCount 累加所有命中项。",
+      "availability": "实例存在且 PerfCounterOptionsKey.enablePerfPrint=true，调用等级 VERBOSE 不低于配置 perfLevel。",
+      "documentation": "backend.md#cd2679790c4bd9f4"
+    },
+    "rob_flushes": {
+      "full_name": "SimTop.cpu.l_soc.core_with_l2.core.backend.inner.ctrlBlock.rob: flush_num",
+      "definition_id": "src/main/scala/xiangshan/backend/rob/Rob.scala::RobImp::XSPerfAccumulate::\"flush_num\"::1",
+      "meaning": "ROB 发出 flushOut.valid 的次数，包含中断、异常和 flushPipe 等头部刷新原因。",
+      "unit": "刷新",
+      "counting": "每周期累加 io.flushOut.valid；布尔真值加 1，PopCount 累加所有命中项。",
+      "availability": "实例存在且 PerfCounterOptionsKey.enablePerfPrint=true，调用等级 VERBOSE 不低于配置 perfLevel。",
+      "documentation": "backend.md#cc8a070a78094611"
+    },
+    "frontend_cycles": {
+      "full_name": "SimTop.cpu.l_soc.core_with_l2.core.frontend.inner: numCycles",
+      "definition_id": "src/main/scala/xiangshan/frontend/Frontend.scala::FrontendInlinedImp::XSPerfAccumulate::\"numCycles\"::1",
+      "meaning": "前端时钟周期总数；计数增量恒为 1，可作为同一清零区间的周期分母。",
+      "unit": "周期（条件为真时每周期加 1）",
+      "counting": "每周期将以下 UInt/Bool 增量加入 64 位累加器；Bool 真加 1、假加 0，数值表达式可一次加多项：true.B。复位或 perfClean 清零，perfDump 输出已累计值。",
+      "availability": "实例由配置展开时存在；要求 PerfCounterOptionsKey.enablePerfPrint 且 VERBOSE >= 配置 perfLevel；由 perfDump 触发打印。",
+      "documentation": "frontend.md#0a227bd500d266b0"
+    },
+    "branch_mispredictions": {
+      "full_name": "SimTop.cpu.l_soc.core_with_l2.core.frontend.inner: branchMispredicts",
+      "definition_id": "src/main/scala/xiangshan/frontend/Frontend.scala::FrontendInlinedImp::XSPerfAccumulate::\"branchMispredicts\"::1",
+      "meaning": "后端有效重定向中 isMisPred 为真的次数；推测路径上的重定向也会进入该统计。",
+      "unit": "周期（条件为真时每周期加 1）",
+      "counting": "每周期将以下 UInt/Bool 增量加入 64 位累加器；Bool 真加 1、假加 0，数值表达式可一次加多项：io.backend.toFtq.redirect.valid &&\n      io.backend.toFtq.redirect.bits.isMisPred。复位或 perfClean 清零，perfDump 输出已累计值。",
+      "availability": "实例由配置展开时存在；要求 PerfCounterOptionsKey.enablePerfPrint 且 VERBOSE >= 配置 perfLevel；由 perfDump 触发打印。",
+      "documentation": "frontend.md#eb3a3103194e9d6b"
+    },
+    "fetch_stall_cycles": {
+      "full_name": "SimTop.cpu.l_soc.core_with_l2.core.frontend.inner: stallCycles_fetch",
+      "definition_id": "src/main/scala/xiangshan/frontend/Frontend.scala::FrontendInlinedImp::XSPerfAccumulate::\"stallCycles_fetch\"::1",
+      "meaning": "ICache 到 IFU 请求未握手的周期；包含上游无请求和下游不就绪。",
+      "unit": "周期（条件为真时每周期加 1）",
+      "counting": "每周期将以下 UInt/Bool 增量加入 64 位累加器；Bool 真加 1、假加 0，数值表达式可一次加多项：!(icache.io.toIfu.req.valid && icache.io.toIfu.req.ready)。复位或 perfClean 清零，perfDump 输出已累计值。",
+      "availability": "实例由配置展开时存在；要求 PerfCounterOptionsKey.enablePerfPrint 且 VERBOSE >= 配置 perfLevel；由 perfDump 触发打印。",
+      "documentation": "frontend.md#ef3ce4737b868343"
+    },
+    "decode_full_stall_cycles": {
+      "full_name": "SimTop.cpu.l_soc.core_with_l2.core.frontend.inner: stallCycles_decodeFull",
+      "definition_id": "src/main/scala/xiangshan/frontend/Frontend.scala::FrontendInlinedImp::XSPerfAccumulate::\"stallCycles_decodeFull\"::1",
+      "meaning": "后端 decodeCanAccept 为假的周期。",
+      "unit": "周期（条件为真时每周期加 1）",
+      "counting": "每周期将以下 UInt/Bool 增量加入 64 位累加器；Bool 真加 1、假加 0，数值表达式可一次加多项：!io.backend.toIBuf.decodeCanAccept。复位或 perfClean 清零，perfDump 输出已累计值。",
+      "availability": "实例由配置展开时存在；要求 PerfCounterOptionsKey.enablePerfPrint 且 VERBOSE >= 配置 perfLevel；由 perfDump 触发打印。",
+      "documentation": "frontend.md#d2b04bbf6202954d"
+    },
+    "frontend_squash_cycles": {
+      "full_name": "SimTop.cpu.l_soc.core_with_l2.core.frontend.inner: squashCycles",
+      "definition_id": "src/main/scala/xiangshan/frontend/Frontend.scala::FrontendInlinedImp::XSPerfAccumulate::\"squashCycles\"::1",
+      "meaning": "后端重定向或 IFU 预译码回写重定向有效的周期；两者同时有效也只加 1。",
+      "unit": "周期（条件为真时每周期加 1）",
+      "counting": "每周期将以下 UInt/Bool 增量加入 64 位累加器；Bool 真加 1、假加 0，数值表达式可一次加多项：io.backend.toFtq.redirect.valid ||\n      ifu.io.toFtq.wbRedirect.valid。复位或 perfClean 清零，perfDump 输出已累计值。",
+      "availability": "实例由配置展开时存在；要求 PerfCounterOptionsKey.enablePerfPrint 且 VERBOSE >= 配置 perfLevel；由 perfDump 触发打印。",
+      "documentation": "frontend.md#b76095cfbc0e94ef"
+    },
+    "itlb_misses": {
+      "full_name": "SimTop.cpu.l_soc.core_with_l2.core.frontend.inner.itlb: miss0",
+      "definition_id": "src/main/scala/xiangshan/cache/mmu/TLB.scala::TLB::XSPerfAccumulate::\"miss\" + Integer.toString(i, 10)::1",
+      "meaning": "非阻塞端口 i 完成查询、启用翻译且 missVec 为真的次数。",
+      "unit": "请求",
+      "counting": "每个时钟周期将 `result_ok(i) && portTranslateEnable(i) && missVec(i)` 加入 64 位累加器；布尔表达式为真加 1，数值表达式按其值累加。",
+      "availability": "enablePerfPrint=true，XSPerfLevel.VERBOSE（默认） 满足全局等级阈值；仅在所属模块被所选配置实例化时存在。 外层生成条件：`(Block(i))`。",
+      "documentation": "cache.md#a8d701ce749ff43f"
+    },
+    "dispatch_stall_cycles": {
+      "full_name": "SimTop.cpu.l_soc.core_with_l2.core.backend.inner.ctrlBlock.dispatch: stall_cycle",
+      "definition_id": "src/main/scala/xiangshan/backend/dispatch/Dispatch.scala::Dispatch::XSPerfAccumulate::\"stall_cycle\"::1",
+      "meaning": "至少一个重命名输入有效且 io.toRenameAllFire 为假的周期数；表示这批输入未全部分发完成。",
+      "unit": "周期",
+      "counting": "每周期累加 dispatchBlock；布尔真值加 1，PopCount 累加所有命中项。",
+      "availability": "实例存在且 PerfCounterOptionsKey.enablePerfPrint=true，调用等级 VERBOSE 不低于配置 perfLevel。",
+      "documentation": "backend.md#75708d6973104a5a"
+    },
+    "rob_stall_cycles": {
+      "full_name": "SimTop.cpu.l_soc.core_with_l2.core.backend.inner.ctrlBlock.dispatch: RobStall",
+      "definition_id": "src/main/scala/xiangshan/backend/dispatch/Dispatch.scala::Dispatch::XSPerfAccumulate::ctr.toString()::1",
+      "meaning": "ROB 不可接收且没有 wait-forward/block-backward 特殊操作造成的槽位停顿；ROB 头细分类别具有更高优先级。",
+      "unit": "槽位·周期",
+      "counting": "每周期累加 PopCount(stallReason.map(_ === ctr.id.U))；布尔真值加 1，PopCount 累加所有命中项。",
+      "availability": "实例存在且 enablePerfPrint=true，调用等级 CRITICAL 不低于配置 perfLevel。",
+      "documentation": "backend.md#2544cb00526f5103"
+    },
+    "load_l1_stall_cycles": {
+      "full_name": "SimTop.cpu.l_soc.core_with_l2.core.backend.inner.ctrlBlock.dispatch: LoadL1Stall",
+      "definition_id": "src/main/scala/xiangshan/backend/dispatch/Dispatch.scala::Dispatch::XSPerfAccumulate::ctr.toString()::1",
+      "meaning": "ROB 头 load 执行停顿经 miss、未发射、TLB、MSHR replay 和违例 replay 过滤后的缺省 L1 类别。",
+      "unit": "槽位·周期",
+      "counting": "每周期累加 PopCount(stallReason.map(_ === ctr.id.U))；布尔真值加 1，PopCount 累加所有命中项。",
+      "availability": "实例存在且 enablePerfPrint=true，调用等级 CRITICAL 不低于配置 perfLevel。",
+      "documentation": "backend.md#2544cb00526f5103"
+    },
+    "load_l2_stall_cycles": {
+      "full_name": "SimTop.cpu.l_soc.core_with_l2.core.backend.inner.ctrlBlock.dispatch: LoadL2Stall",
+      "definition_id": "src/main/scala/xiangshan/backend/dispatch/Dispatch.scala::Dispatch::XSPerfAccumulate::ctr.toString()::1",
+      "meaning": "ROB 头 load 有 DCache/L1 miss，而无 L2/L3 miss 匹配的槽位。",
+      "unit": "槽位·周期",
+      "counting": "每周期累加 PopCount(stallReason.map(_ === ctr.id.U))；布尔真值加 1，PopCount 累加所有命中项。",
+      "availability": "实例存在且 enablePerfPrint=true，调用等级 CRITICAL 不低于配置 perfLevel。",
+      "documentation": "backend.md#2544cb00526f5103"
+    },
+    "load_l3_stall_cycles": {
+      "full_name": "SimTop.cpu.l_soc.core_with_l2.core.backend.inner.ctrlBlock.dispatch: LoadL3Stall",
+      "definition_id": "src/main/scala/xiangshan/backend/dispatch/Dispatch.scala::Dispatch::XSPerfAccumulate::ctr.toString()::1",
+      "meaning": "ROB 头 load 有 L2 miss 匹配而无 L3 miss 匹配的槽位。",
+      "unit": "槽位·周期",
+      "counting": "每周期累加 PopCount(stallReason.map(_ === ctr.id.U))；布尔真值加 1，PopCount 累加所有命中项。",
+      "availability": "实例存在且 enablePerfPrint=true，调用等级 CRITICAL 不低于配置 perfLevel。",
+      "documentation": "backend.md#2544cb00526f5103"
+    },
+    "load_memory_stall_cycles": {
+      "full_name": "SimTop.cpu.l_soc.core_with_l2.core.backend.inner.ctrlBlock.dispatch: LoadMemStall",
+      "definition_id": "src/main/scala/xiangshan/backend/dispatch/Dispatch.scala::Dispatch::XSPerfAccumulate::ctr.toString()::1",
+      "meaning": "ROB 头 load 有 L3 miss 匹配的槽位。",
+      "unit": "槽位·周期",
+      "counting": "每周期累加 PopCount(stallReason.map(_ === ctr.id.U))；布尔真值加 1，PopCount 累加所有命中项。",
+      "availability": "实例存在且 enablePerfPrint=true，调用等级 CRITICAL 不低于配置 perfLevel。",
+      "documentation": "backend.md#2544cb00526f5103"
+    },
+    "dcache_miss_requests": {
+      "full_name": "SimTop.cpu.l_soc.core_with_l2.core.memBlock.inner.dcache.dcache.missQueue: miss_req",
+      "definition_id": "src/main/scala/xiangshan/cache/dcache/mainpipe/MissQueue.scala::MissQueue::XSPerfAccumulate::\"miss_req\"::1",
+      "meaning": "所有 miss query 端口成功接受请求的数量之和。",
+      "unit": "请求",
+      "counting": "每个时钟周期将 `PopCount(query_fire)` 加入 64 位累加器；布尔表达式为真加 1，数值表达式按其值累加。",
+      "availability": "enablePerfPrint=true，XSPerfLevel.VERBOSE（默认） 满足全局等级阈值；仅在所属模块被所选配置实例化时存在。",
+      "documentation": "cache.md#70e29171d313904c"
+    },
+    "l2_demand_misses": {
+      "full_name": "SimTop.cpu.l_soc.core_with_l2.l2top.inner.l2cache.topDown: l2demandMiss",
+      "definition_id": "XSCache/src/main/scala/coupledL2/TopDownMonitor.scala::TopDownMonitor::XSPerfAccumulate::\"l2demandMiss\"::1",
+      "meaning": "全部 slice 的有效 A 来源目录查询中 CPU demand 请求未命中的数量。",
+      "unit": "请求",
+      "counting": "每个时钟周期将 `PopCount(l2demandMiss)` 加入 64 位累加器；布尔表达式为真加 1，数值表达式按其值累加。",
+      "availability": "enablePerfPrint=true，XSPerfLevel.VERBOSE（默认） 满足全局等级阈值；仅在所属模块被所选配置实例化时存在。",
+      "documentation": "XSCache.md#602ce0fddbb11bce"
+    },
+    "rob_l2_miss_block_cycles": {
+      "full_name": "SimTop.cpu.l_soc.core_with_l2.l2top.inner.l2cache.topDown: RobBlockByL2Miss",
+      "definition_id": "XSCache/src/main/scala/coupledL2/TopDownMonitor.scala::TopDownMonitor::XSPerfAccumulate::s\"RobBlockBy${cacheParams.name}Miss\"::1",
+      "meaning": "ROB 头部有效物理地址与任一在途 cache miss 块地址匹配的周期数；按 l2MissMatch 统计。",
+      "unit": "周期",
+      "counting": "每个时钟周期将 `io.debugTopDown.l2MissMatch` 加入 64 位累加器；布尔表达式为真加 1，数值表达式按其值累加。",
+      "availability": "enablePerfPrint=true，XSPerfLevel.VERBOSE（默认） 满足全局等级阈值；仅在所属模块被所选配置实例化时存在。",
+      "documentation": "XSCache.md#83e0a8a97978c160"
+    },
+    "ptw_fsm_requests": {
+      "full_name": "SimTop.cpu.l_soc.core_with_l2.core.memBlock.inner.ptw.ptw.ptw: ptw_fsm_req_count",
+      "definition_id": "src/main/scala/xiangshan/cache/mmu/PageTableWalker.scala::PTW::XSPerfAccumulate::\"ptw_fsm_req_count\"::1",
+      "meaning": "PTW 状态机接受遍历请求的握手次数。",
+      "unit": "请求",
+      "counting": "每个时钟周期将 `io.req.fire` 加入 64 位累加器；布尔表达式为真加 1，数值表达式按其值累加。",
+      "availability": "enablePerfPrint=true，XSPerfLevel.VERBOSE（默认） 满足全局等级阈值；仅在所属模块被所选配置实例化时存在。",
+      "documentation": "cache.md#3022966a6a8e4752"
+    },
+    "ptw_mem_wait_cycles": {
+      "full_name": "SimTop.cpu.l_soc.core_with_l2.core.memBlock.inner.ptw.ptw.ptw: ptw_mem_wait_cycle",
+      "definition_id": "src/main/scala/xiangshan/cache/mmu/PageTableWalker.scala::PTW::XSPerfAccumulate::\"ptw_mem_wait_cycle\"::1",
+      "meaning": "PTW 从内存请求握手到内存响应握手之间的 BoolStopWatch 有效周期总和。",
+      "unit": "周期",
+      "counting": "每个时钟周期将 `BoolStopWatch(mem.req.fire, mem.resp.fire, true)` 加入 64 位累加器；布尔表达式为真加 1，数值表达式按其值累加。",
+      "availability": "enablePerfPrint=true，XSPerfLevel.VERBOSE（默认） 满足全局等级阈值；仅在所属模块被所选配置实例化时存在。",
+      "documentation": "cache.md#d6192f498f179af7"
+    }
+  },
+  "topdown_events": {
+    "commitInstr": {
+      "full_name": "SimTop.cpu.l_soc.core_with_l2.core.backend.inner.ctrlBlock.rob: commitInstr",
+      "definition_id": "src/main/scala/xiangshan/backend/rob/Rob.scala::RobImp::XSPerfAccumulate::\"commitInstr\"::1",
+      "meaning": "ROB 源码 trueCommitCnt 口径的提交指令数，按各有效提交条目的 instrSizeCommit 求和并延迟一拍记入；可用于退休 IPC 分子。 instrSize 与 trace 的 iretire 是两种独立解码，融合场景下勿直接等同于 iretire。",
+      "unit": "指令",
+      "counting": "每周期累加 ifCommitReg(trueCommitCnt)；布尔真值加 1，PopCount 累加所有命中项。",
+      "availability": "实例存在且 enablePerfPrint=true，调用等级 CRITICAL 不低于配置 perfLevel。",
+      "documentation": "backend.md#7ecd8538a4a99a8e"
+    },
+    "RobStall": {
+      "full_name": "SimTop.cpu.l_soc.core_with_l2.core.backend.inner.ctrlBlock.dispatch: RobStall",
+      "definition_id": "src/main/scala/xiangshan/backend/dispatch/Dispatch.scala::Dispatch::XSPerfAccumulate::ctr.toString()::1",
+      "meaning": "ROB 不可接收且没有 wait-forward/block-backward 特殊操作造成的槽位停顿；ROB 头细分类别具有更高优先级。",
+      "unit": "槽位·周期",
+      "counting": "每周期累加 PopCount(stallReason.map(_ === ctr.id.U))；布尔真值加 1，PopCount 累加所有命中项。",
+      "availability": "实例存在且 enablePerfPrint=true，调用等级 CRITICAL 不低于配置 perfLevel。",
+      "documentation": "backend.md#2544cb00526f5103"
+    },
+    "ControlRedirectStall": {
+      "full_name": "SimTop.cpu.l_soc.core_with_l2.core.backend.inner.ctrlBlock.dispatch: ControlRedirectStall",
+      "definition_id": "src/main/scala/xiangshan/backend/dispatch/Dispatch.scala::Dispatch::XSPerfAccumulate::ctr.toString()::1",
+      "meaning": "当前控制流重定向阻止流水线推进的槽位。",
+      "unit": "槽位·周期",
+      "counting": "每周期累加 PopCount(stallReason.map(_ === ctr.id.U))；布尔真值加 1，PopCount 累加所有命中项。",
+      "availability": "实例存在且 enablePerfPrint=true，调用等级 CRITICAL 不低于配置 perfLevel。",
+      "documentation": "backend.md#2544cb00526f5103"
+    },
+    "TAGEMissBubble": {
+      "full_name": "SimTop.cpu.l_soc.core_with_l2.core.backend.inner.ctrlBlock.dispatch: TAGEMissBubble",
+      "definition_id": "src/main/scala/xiangshan/backend/dispatch/Dispatch.scala::Dispatch::XSPerfAccumulate::ctr.toString()::1",
+      "meaning": "控制流重定向携带 tageMissBubble 标志的气泡槽位。",
+      "unit": "槽位·周期",
+      "counting": "每周期累加 PopCount(stallReason.map(_ === ctr.id.U))；布尔真值加 1，PopCount 累加所有命中项。",
+      "availability": "实例存在且 enablePerfPrint=true，调用等级 CRITICAL 不低于配置 perfLevel。",
+      "documentation": "backend.md#2544cb00526f5103"
+    },
+    "LoadMemStall": {
+      "full_name": "SimTop.cpu.l_soc.core_with_l2.core.backend.inner.ctrlBlock.dispatch: LoadMemStall",
+      "definition_id": "src/main/scala/xiangshan/backend/dispatch/Dispatch.scala::Dispatch::XSPerfAccumulate::ctr.toString()::1",
+      "meaning": "ROB 头 load 有 L3 miss 匹配的槽位。",
+      "unit": "槽位·周期",
+      "counting": "每周期累加 PopCount(stallReason.map(_ === ctr.id.U))；布尔真值加 1，PopCount 累加所有命中项。",
+      "availability": "实例存在且 enablePerfPrint=true，调用等级 CRITICAL 不低于配置 perfLevel。",
+      "documentation": "backend.md#2544cb00526f5103"
+    },
+    "ICacheMissBubble": {
+      "full_name": "SimTop.cpu.l_soc.core_with_l2.core.backend.inner.ctrlBlock.dispatch: ICacheMissBubble",
+      "definition_id": "src/main/scala/xiangshan/backend/dispatch/Dispatch.scala::Dispatch::XSPerfAccumulate::ctr.toString()::1",
+      "meaning": "前端传递的 ICache miss 气泡槽位。",
+      "unit": "槽位·周期",
+      "counting": "每周期累加 PopCount(stallReason.map(_ === ctr.id.U))；布尔真值加 1，PopCount 累加所有命中项。",
+      "availability": "实例存在且 enablePerfPrint=true，调用等级 CRITICAL 不低于配置 perfLevel。",
+      "documentation": "backend.md#2544cb00526f5103"
+    }
+  }
+}

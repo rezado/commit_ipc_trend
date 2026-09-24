@@ -204,6 +204,95 @@ class StoreServiceTest(unittest.TestCase):
         self.assertIsNone(result["equivalent_ipc_a"])
         self.assertAlmostEqual(result["diagnostic_subset_cpi_a"], 2.0)
 
+    def test_ab_full_workload_uses_workload_scoped_weight(self):
+        # A global slice set may contain many workloads whose weights each sum to 1.
+        # The comparison coverage denominator must only include the selected workload.
+        for item in self.manifests:
+            member = {
+                "slice_id": "slice-gcc",
+                "benchmark": "403.gcc",
+                "workload": "gcc_ref",
+                "slice": "gcc_ref_1_1.0",
+                "checkpoint": 1,
+                "checkpoint_identity": "/cp/gcc/1",
+                "restore_mode": "checkpoint-image",
+                "warmup_definition": "warmup",
+                "roi_definition": "roi",
+                "weight": 1.0,
+                "weight_kind": "simpoint_weight_unverified",
+                "ordinal": 2,
+            }
+            item["slice_set"]["members"].append(member)
+            item["slice_results"].append(
+                {
+                    "slice_id": "slice-gcc",
+                    "status": "valid",
+                    "seed": 1,
+                    "window_id": "roi_summary",
+                    "instructions": 100,
+                    "cycles": 100,
+                    "ipc_reported": 1.0,
+                    "ipc_computed": 1.0,
+                    "cpi": 1.0,
+                    "source_out_uri": f"/raw/{item['run']['run_id']}/gcc/out",
+                    "source_err_uri": f"/raw/{item['run']['run_id']}/gcc/err",
+                    "error_code": None,
+                }
+            )
+        self.store.import_manifests(self.manifests)
+        result = TrendService(self.store).compare_points("run-a", "run-b", object_id="mcf")
+        self.assertEqual(result["status"], "comparable")
+        self.assertEqual(result["mode"], "full_slice_set")
+        self.assertEqual(result["coverage_weight"], 1.0)
+        self.assertEqual(result["total_slice_count"], 2)
+
+        gcc = TrendService(self.store).compare_points(
+            "run-a", "run-b", object_id="gcc_ref"
+        )
+        self.assertEqual(gcc["status"], "comparable")
+        self.assertEqual(gcc["mode"], "full_slice_set")
+        self.assertEqual(gcc["total_slice_count"], 1)
+
+    def test_incomplete_workload_membership_is_incomparable(self):
+        self.store.import_manifests(self.manifests)
+        self.store.connection.execute(
+            "DELETE FROM slice_results WHERE run_id = ? AND slice_id = ?",
+            ("run-b", "slice-b"),
+        )
+        result = TrendService(self.store).compare_points("run-a", "run-b")
+        self.assertEqual(result["status"], "incomparable")
+        self.assertIn("slice_membership_incomplete", result["reasons"])
+        self.assertEqual(result["membership"]["missing_in_b"], ["slice-b"])
+
+    def test_anomaly_report_auto_selects_prior_and_includes_counter_clues(self):
+        self.manifests[1] = manifest("bbbbbbbbb", "run-b", (2.2, 1.0))
+        for item, value in zip(self.manifests, (100.0, 120.0)):
+            item["counter_values"][0].update(
+                {
+                    "raw_value": value,
+                    "value": value,
+                    "availability": "available",
+                }
+            )
+        self.store.import_manifests(self.manifests)
+        report = TrendService(self.store).detect_anomalies("run-b")
+        self.assertEqual(report["status"], "ok")
+        self.assertFalse(report["policy"]["rerun_required"])
+        comparison = report["comparisons"][0]
+        self.assertEqual(comparison["baseline_basis"], "nearest_prior_compatible")
+        self.assertEqual(comparison["summary"]["anomalous_workload_count"], 1)
+        self.assertGreaterEqual(comparison["summary"]["anomalous_slice_count"], 1)
+        workload = comparison["workloads"][0]
+        self.assertTrue(workload["is_anomaly"])
+        slice_a = next(
+            row for row in workload["anomalous_slices"] if row["slice_id"] == "slice-a"
+        )
+        self.assertIn("slice_cpi_degradation", slice_a["reasons"])
+        self.assertEqual(slice_a["counter_clues"][0]["metric_id"], "zero_counter")
+        self.assertAlmostEqual(
+            slice_a["counter_clues"][0]["directional_degradation_percent"], 20.0
+        )
+
     def test_comparison_key_mismatch_is_incomparable(self):
         self.manifests[1]["run"]["comparison_key"] = "different"
         self.store.import_manifests(self.manifests)

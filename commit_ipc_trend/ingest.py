@@ -163,7 +163,7 @@ def build_manifest(receipt_path: Path, git_repo: Path, include_counters: bool = 
     # score covers every slice. Require score freshness and complete ROI data.
     score_stale = bool(score_path and any(
         out_path.is_file() and out_path.stat().st_mtime_ns > score_path.stat().st_mtime_ns
-        for out_path in (run_dir / m["slice"] / "simulator_out.txt" for m in members)
+        for out_path in (Path(r["source_out_uri"]) for r in results)
     ))
     status = "stale" if score_stale else "published" if all(r["status"] == "valid" for r in results) else "partial"
     if include_counters and any(c["availability"] == "parse_error" for c in counters):

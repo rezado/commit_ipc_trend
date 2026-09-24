@@ -29,6 +29,7 @@ from commit_ipc_trend.schema import (  # noqa: E402
     canonical_hash,
 )
 from commit_ipc_trend.store import Store  # noqa: E402
+from tools.export_dashboard_anomalies import export_dashboard_anomalies  # noqa: E402
 from tools.collect_spec06_slice_ipc_trends import (  # noqa: E402
     collect_observations,
     load_runs,
@@ -506,6 +507,9 @@ def main() -> int:
         database, report_root, checkpoint_path, slices, runs, rows, trends
     )
     write_scores_csv(database, output_dir / "scores.csv")
+    anomaly_audit = export_dashboard_anomalies(
+        database, output_dir / "performance-anomalies.json"
+    )
     audit = {
         "schema_version": "mainline-selection-audit/v1",
         "created_at": datetime.now(timezone.utc).isoformat(),
@@ -525,6 +529,7 @@ def main() -> int:
         "eligible_count": sum(row["eligible"] for row in candidate_audit),
         "candidates": candidate_audit,
         "database": {"path": str(database), **database_audit},
+        "anomalies": anomaly_audit,
     }
     write_json(output_dir / "selection-audit.json", audit)
     print(json.dumps({

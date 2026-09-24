@@ -198,6 +198,36 @@ svg .point:focus { outline:none; stroke:#14233a; stroke-width:4; }
 .slice-summary { display:flex; gap:22px; padding:12px 21px; font-size:11px; background:#fbfcfe; color:#738197; flex-wrap:wrap; }
 .slice-summary b { margin-left:3px; color:#506077; }
 
+.anomaly-panel { border-color:#ead4d0; }
+.anomaly-panel > .panel-head { background:#fffafa; border-bottom:1px solid #f1dfdc; padding-bottom:14px; }
+.anomaly-comparisons { display:grid; grid-template-columns:1fr 1fr; }
+.anomaly-block { min-width:0; padding:18px 20px 20px; }
+.anomaly-block + .anomaly-block { border-left:1px solid #edf1f5; }
+.anomaly-head { display:flex; align-items:center; justify-content:space-between; gap:15px; margin-bottom:16px; }
+.anomaly-head > div:first-child span { display:block; color:#8c98a8; font-size:10px; margin-bottom:3px; }
+.anomaly-head > div:first-child b { color:#485b74; font-size:13px; }
+.anomaly-count { color:#7b8798; font-size:11px; white-space:nowrap; }
+.anomaly-count strong { color:var(--red); font-size:16px; }
+.anomaly-body { display:grid; grid-template-columns:minmax(150px,.48fr) minmax(0,1.52fr); gap:18px; }
+.anomaly-body h3 { margin:0 0 8px; color:#8a96a7; font-size:10px; font-weight:650; text-transform:uppercase; letter-spacing:.5px; }
+.anomaly-workloads { min-width:0; }
+.anomaly-workload { display:grid; grid-template-columns:minmax(0,1fr) auto; width:100%; gap:2px 8px; padding:7px 8px; border:0; border-bottom:1px solid #edf1f5; background:#fff; color:#53647b; text-align:left; font-size:11px; }
+.anomaly-workload:hover { background:#fff7f5; }
+.anomaly-workload span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.anomaly-workload strong { font-size:10px; font-weight:650; }
+.anomaly-workload small { grid-column:1 / -1; color:#98a3b2; font-size:9px; }
+.anomaly-slices { min-width:0; }
+.anomaly-slices table { width:100%; border-collapse:collapse; font-variant-numeric:tabular-nums; }
+.anomaly-slices th { padding:7px 8px; border-block:1px solid #edf1f5; background:#f8fafc; color:#8995a6; font-size:9px; font-weight:550; text-align:right; white-space:nowrap; }
+.anomaly-slices th:first-child,.anomaly-slices td:first-child { text-align:left; }
+.anomaly-slices td { max-width:190px; padding:7px 8px; border-bottom:1px solid #edf1f5; color:#69798f; font-size:10px; text-align:right; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.anomaly-slice { display:block; max-width:220px; padding:0; border:0; background:none; color:#345caa; text-align:left; }
+.anomaly-slice b,.anomaly-slice span { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.anomaly-slice b { font-size:10px; }
+.anomaly-slice span { color:#8d99a9; font-size:9px; margin-top:2px; }
+.anomaly-empty { padding:25px; color:#8b97a7; font-size:12px; text-align:center; }
+.anomaly-empty.compact { padding:10px 6px; font-size:10px; }
+
 .transitions { display:grid; grid-template-columns:repeat(3,1fr); gap:0; padding:6px 20px 18px; }
 .transition-card { padding:12px 15px; border-right:1px solid #edf1f5; border-bottom:1px solid #edf1f5; }
 .transition-card:nth-child(3n) { border-right:0; }
@@ -236,6 +266,8 @@ button:disabled,select:disabled { opacity:.58; cursor:default; }
   main { margin-left:182px; padding-inline:22px; }
   .analysis-grid { grid-template-columns:1fr; }
   .counter-grid { grid-template-columns:1fr; }
+  .anomaly-comparisons { grid-template-columns:1fr; }
+  .anomaly-block + .anomaly-block { border-left:0; border-top:1px solid #edf1f5; }
   .kpis { gap:9px; }
   .kpi { padding:15px; }
   .kpi-value { font-size:24px; }
@@ -256,7 +288,7 @@ button:disabled,select:disabled { opacity:.58; cursor:default; }
   .nav { padding:7px 8px; font-size:12px; margin:0; white-space:nowrap; }
   .nav span { display:none; }
   .nav.active { border:0; padding-left:8px; }
-  .nav:nth-of-type(3),.nav:nth-of-type(4) { display:none; }
+  .nav:nth-of-type(4),.nav:nth-of-type(5) { display:none; }
   main { margin:0; padding:0 13px; }
   header { height:62px; }
   .crumb { font-size:11px; }
@@ -296,6 +328,11 @@ button:disabled,select:disabled { opacity:.58; cursor:default; }
   .matrix-panel .counter-matrix { min-width:640px; }
   .result-table td,.result-table th,.commit-table td,.commit-table th { padding:10px 13px; }
   .slice-summary { gap:8px 15px; }
+  .anomaly-block { padding:14px 12px; }
+  .anomaly-head { align-items:flex-start; }
+  .anomaly-body { grid-template-columns:1fr; }
+  .anomaly-workloads { display:grid; grid-template-columns:1fr 1fr; gap:0 8px; }
+  .anomaly-workloads h3 { grid-column:1 / -1; }
   .transitions { grid-template-columns:1fr; padding-inline:12px; }
   .transition-card,.transition-card:nth-child(2n),.transition-card:nth-child(3n) { border-right:0; border-bottom:1px solid #edf1f5; }
   .transition-card:last-child { border-bottom:0; }

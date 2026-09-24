@@ -1,12 +1,19 @@
 # commit IPC trend
 
+这是一个基于 SQLite 的 XiangShan 性能趋势与回归分析工具。CI 性能报告由 Python 离线解析并导入数据库；页面读取数据库或从数据库导出的规范化数据，不在浏览器中扫描原始日志。
+
 ## 通用 perf-trigger 回归平台
 
-按完成标记增量导入 perf-trigger 运行、查看 A/B 切片贡献、生成计数器证据摘要，以及调用 XiangShan top-down/rolling 的部署与命令，见 [docs/perf-platform.md](docs/perf-platform.md)。
+增量导入已完成的 perf-trigger 运行后，启动读取实时 SQLite 的分析页面：
 
-从已完成的回归到切片、计数器、Top-down 和 Rolling 的具体操作，见 [性能分析 Flow](docs/perf-analysis-flow.zh.md)。
+```bash
+python3 tools/serve_perf_platform.py --db /srv/perf/trend.sqlite \
+  --git-repo /path/to/XiangShan --host 127.0.0.1 --port 8000
+```
 
-这是一个基于 SQLite 的 XiangShan 性能趋势看板。系统将 CI 性能报告离线解析并导入数据库，前端只读取数据库导出的规范化数据，不在浏览器中扫描原始日志。
+页面按提交趋势、整体分数、workload、切片、计数器和已登记的 Top-down/Rolling 产物逐层查看。`--git-repo` 用于选择第一父链上的可比已测试基线。收据、导入、服务部署与 API 见 [通用平台说明](docs/perf-platform.md)；具体排查命令见 [性能分析 Flow](docs/perf-analysis-flow.zh.md)。
+
+下文的 `xiangshan-performance-dashboard/` 是从固定主线数据导出的静态看板，使用另一套启动入口。
 
 ## 数据链路
 
@@ -17,7 +24,7 @@ build_mainline_september_dashboard.py
     ↓
 mainline-performance.sqlite
     ↓
-import_mainline_counters.py / export_dashboard_counters.py
+import_mainline_counters.py / export_dashboard_counters.py / export_dashboard_anomalies.py
     ↓
 xiangshan-performance-dashboard/
 ```
@@ -59,6 +66,7 @@ python3 tools/build_mainline_september_dashboard.py
 - `selection-audit.json`：候选 run 筛选审计
 - `scores.csv`、`workload-weighted-trend.csv`、`slice-ipc-wide.csv`：数据库导出的前端数据
 - `perf-counters.json`：注册性能计数器数据
+- `performance-anomalies.json`：最新点相对最近可比点和固定基线的异常清单
 
 ## 性能计数器
 
@@ -114,6 +122,54 @@ python3 tools/query_demo.py \
 
 A/B 比较会检查 comparison key、slice set、发布状态和结果完整性，并返回覆盖率、切片 CPI 贡献和原始日志路径。
 
+### 异常性能数据识别（无需复跑）
+
+`anomalies` 直接分析数据库中的现有观测，不会启动仿真或创建复跑任务。未指定
+`--baseline` 时，优先选择已测试的直接父 commit；父 commit 没有观测时，选择最近的
+可比历史 run。还可以同时指定固定验收基线：
+
+```bash
+python3 tools/query_demo.py \
+  --db outputs/mainline-september/mainline-performance.sqlite \
+  anomalies --current <new-run-or-commit> \
+  --git-repo /path/to/XiangShan \
+  --fixed-baseline <release-run-or-commit>
+```
+
+更新静态看板中的异常清单：
+
+```bash
+python3 tools/export_dashboard_anomalies.py
+```
+
+提供 `--git-repo` 时，异常查询和导出使用 PR 的第一父链祖先基线策略；未提供时保留历史兼容选择方式。
+
+默认报告全部 workload，也可以用多个 `--workload` 缩小范围。常用策略参数为：
+
+```text
+--workload-threshold-pct 0.5       workload 加权 CPI 退化阈值
+--slice-threshold-pct 0.5          单 slice CPI 退化阈值
+--contribution-top-n 10            异常 workload 的正向加权 ΔCPI 候选数
+--counter-change-threshold-pct 5   计数器方向性变化阈值
+--counter-top-n 5                  每个异常 slice 返回的计数器线索数
+```
+
+输出同时保留 workload 加权 CPI、单 slice 退化幅度、`weight × ΔCPI`、异常原因、
+原始日志路径和同窗口计数器变化。计数器只用于提供定位线索，不作为因果结论。
+报告中的 `statistical_significance=not_assessed_single_observation` 明确表示它是单次观测的
+实际影响筛选，不声称统计显著性。
+
+## Rolling 阶段分析
+
+在 workload/slice CPI 贡献和 PERF 计数器定位之后，使用真实 ChiselDB 进一步分析发生阶段。
+正式入口为 `tools/analyze_rolling.py`，支持从 `.tar.zst` 中精确提取一个 DB，以及单切片
+rolling 表校验、IPC 时序图、同周期相关性和可选预取阶段相关性。命令、统计窗口、工具版本及
+执行状态统一保存到 `analysis.json`，不会将趋势 SQLite 当作 rolling 输入。
+
+完整操作和已验证的 Actions 30823230496 示例见 [Rolling 分析流程](docs/rolling-analysis.zh.md)。
+PR #1 已合入当前主工作区；A/B 包装器为 `tools/analyze_perf_pair.py`，与单库入口的适用边界见上述文档。
+整合后实跑证据位于 `outputs/pr-integrated-20260924/`。
+
 ## 测试
 
 ```bash
@@ -124,11 +180,20 @@ python3 -m unittest discover -s tests -p 'test_*.py' -v
 
 ## 目录说明
 
+模块职责、命令入口和测试对应关系见 [代码结构与维护入口](docs/code-structure.zh.md)。
+
 - `commit_ipc_trend/`：解析器、指标计算、SQLite 存储和查询服务
+- `commit_ipc_trend/anomalies.py`：异常切片候选筛选和同窗口计数器配对
+- `commit_ipc_trend/counter_semantics.json`：通用平台展示的计数器与 Top-down 事件解释
+- `commit_ipc_trend/rolling.py`：rolling DB 校验、任务编排和执行记录
 - `tools/build_mainline_september_dashboard.py`：构建数据库及看板数据
 - `tools/import_mainline_counters.py`：导入注册计数器
 - `tools/export_dashboard_counters.py`：从数据库导出计数器 JSON
+- `tools/export_dashboard_anomalies.py`：从现有数据库导出异常清单 JSON
 - `tools/query_demo.py`：数据库趋势/A-B 查询
+- `tools/analyze_rolling.py`：归档 DB 提取、单切片 rolling 校验/相关性/绘图
+- `tools/serve_perf_platform.py` 与 `perf_platform_web/`：实时 SQLite 的分析 API 与页面
+- `docs/rolling-analysis.zh.md`：从切片贡献到 rolling 的操作流程和实测案例
 - `tools/discover_perf_counters.py`：只读扫描日志以维护计数器注册表
 - `xiangshan-performance-dashboard/`：数据库数据驱动的静态前端
 - `docs/implementation-plan.md`：数据契约、表结构和后续演进方案

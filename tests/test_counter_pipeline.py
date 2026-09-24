@@ -87,6 +87,33 @@ class CounterPipelineTest(unittest.TestCase):
         )
         self.assertEqual(result.returncode, 0, result.stderr)
 
+    def test_dashboard_anomaly_export_matches_latest_database_run(self):
+        root = Path(__file__).resolve().parents[1]
+        database = root / "outputs/mainline-september/mainline-performance.sqlite"
+        exported = root / "outputs/mainline-september/performance-anomalies.json"
+        if not database.is_file() or not exported.is_file():
+            self.skipTest("generated database/anomaly export is not present")
+        payload = json.loads(exported.read_text(encoding="utf-8"))
+        connection = sqlite3.connect(database)
+        try:
+            latest = connection.execute(
+                """
+                SELECT c.short_sha
+                  FROM runs r JOIN commits c ON c.commit_sha = r.commit_sha
+                 WHERE r.status = 'published'
+                 ORDER BY c.commit_epoch DESC, r.snapshot_at DESC
+                 LIMIT 1
+                """
+            ).fetchone()[0]
+        finally:
+            connection.close()
+        self.assertEqual(payload["schema_version"], "performance-anomalies/v1")
+        self.assertEqual(payload["current"]["short_sha"], latest)
+        self.assertGreaterEqual(payload["comparison_count"], 1)
+        for comparison in payload["comparisons"]:
+            self.assertEqual(comparison["summary"]["workload_count"], 55)
+            self.assertEqual(comparison["summary"]["incomparable_workload_count"], 0)
+
     def test_exported_counters_share_a_normalizable_window(self):
         """The per-instruction view normalizes with rob_committed_instructions.
 

@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>XiangShan 性能分析</title>
+  <link rel="stylesheet" href="/style.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <div class="brand-mark">XS</div>
+      <div>
+        <p class="eyebrow">XIANGSHAN · PERFORMANCE INTELLIGENCE</p>
+        <h1>性能回归分析</h1>
+      </div>
+      <div id="header-status" class="header-status">读取运行数据…</div>
+    </div>
+  </header>
+
+  <div class="layout">
+    <aside class="sidebar" aria-label="分析步骤">
+      <p class="sidebar-title">分析路径</p>
+      <nav>
+        <a href="#trend"><span>00</span> 变化曲线</a>
+        <a href="#overall"><span>01</span> 整体性能</a>
+        <a href="#workloads"><span>02</span> Workload</a>
+        <a href="#slices"><span>03</span> 关键切片</a>
+        <a href="#counters"><span>04</span> 性能计数器</a>
+        <a href="#deepdive"><span>05</span> Top-down / Rolling</a>
+      </nav>
+      <div class="sidebar-note">从整体变化逐层下钻。CPI 贡献用于排序，计数器和阶段分析提供线索；结论仍需核对原始日志与 RTL。</div>
+    </aside>
+
+    <main class="content">
+      <section id="trend" class="stage panel trend-panel" aria-labelledby="trend-title">
+        <div class="stage-heading">
+          <div><p class="step">00 / TREND</p><h2 id="trend-title">性能变化曲线</h2></div>
+          <p id="trend-subtitle">已测试提交的性能变化；虚线标记当前 A/B。</p>
+        </div>
+        <div class="trend-controls">
+          <div class="segmented" id="trend-scopes" aria-label="曲线范围">
+            <button type="button" data-trend-scope="suite" class="active">整体分数</button>
+            <button type="button" data-trend-scope="workload">Workload IPC</button>
+            <button type="button" data-trend-scope="slice">切片 IPC</button>
+            <button type="button" data-trend-scope="counter">计数器</button>
+          </div>
+          <label id="trend-counter-wrap" hidden>指标 <select id="trend-counter"></select></label>
+          <label>数值 <select id="trend-mode">
+            <option value="absolute">绝对值</option>
+            <option value="relative">相对基线 A</option>
+          </select></label>
+        </div>
+        <div id="trend-chart" class="trend-chart" aria-live="polite"></div>
+        <p id="trend-caption" class="footnote"></p>
+      </section>
+
+      <section class="intro panel" aria-labelledby="intro-title">
+        <div class="intro-copy">
+          <p class="eyebrow">COMPARISON WORKSPACE</p>
+          <h2 id="intro-title">从一次运行追到具体证据</h2>
+          <p>选择目标运行，默认寻找最近的可比第一父链已测试祖先。也可以手动指定基线。</p>
+        </div>
+        <div class="run-controls">
+          <label>目标运行 <select id="target-run"></select></label>
+          <label>基线运行 <select id="base-run"></select></label>
+          <button id="refresh" type="button">重新分析</button>
+        </div>
+        <div id="pair-note" class="notice" role="status" aria-live="polite"></div>
+        <div id="run-meta" class="run-meta"></div>
+      </section>
+
+      <section id="overall" class="stage panel" aria-labelledby="overall-title">
+        <div class="stage-heading">
+          <div><p class="step">01 / OVERVIEW</p><h2 id="overall-title">整体性能</h2></div>
+          <p>先看发布分数与运行条件，再决定深入哪些 workload。</p>
+        </div>
+        <div id="score-cards" class="score-grid"></div>
+        <div id="overall-notes" class="stage-note"></div>
+      </section>
+
+      <section id="workloads" class="stage panel" aria-labelledby="workloads-title">
+        <div class="stage-heading">
+          <div><p class="step">02 / WORKLOADS</p><h2 id="workloads-title">Workload 排查</h2></div>
+          <p>按 CPI 变化排序；完整切片集计算加权 CPI，部分覆盖仅作诊断。</p>
+        </div>
+        <div id="workload-summary" class="summary-strip"></div>
+        <div class="table-toolbar">
+          <div class="segmented" id="workload-filters" aria-label="筛选 workload">
+            <button type="button" data-filter="all" class="active">全部</button>
+            <button type="button" data-filter="regressed">退化</button>
+            <button type="button" data-filter="improved">改善</button>
+          </div>
+          <input id="workload-search" type="search" placeholder="搜索 workload" aria-label="搜索 workload">
+        </div>
+        <div id="workload-table" class="table-wrap"></div>
+      </section>
+
+      <section id="slices" class="stage panel" aria-labelledby="slices-title">
+        <div class="stage-heading">
+          <div><p class="step">03 / SLICES</p><h2 id="slices-title">关键切片</h2></div>
+          <p>按权重 × ΔCPI 排序；正值是退化贡献，负值是抵消改善。</p>
+        </div>
+        <div id="workload-detail" class="summary-strip"></div>
+        <div id="slice-table" class="table-wrap"></div>
+      </section>
+
+      <section id="counters" class="stage panel" aria-labelledby="counters-title">
+        <div class="stage-heading">
+          <div><p class="step">04 / COUNTERS</p><h2 id="counters-title">性能计数器</h2></div>
+          <p>对同一切片、同一语义版本与统计窗口的 A/B 数值配对。</p>
+        </div>
+        <div id="slice-detail"></div>
+        <div id="counter-categories" class="chips"></div>
+        <div id="counter-table" class="table-wrap"></div>
+        <p class="footnote">PERF 计数器来自末次 dump；切片 CPI 来自 ROI 汇总。两者窗口可能不同，计数变化只用于定位，不直接证明因果。</p>
+      </section>
+
+      <section id="deepdive" class="stage panel" aria-labelledby="deepdive-title">
+        <div class="stage-heading">
+          <div><p class="step">05 / DEEP DIVE</p><h2 id="deepdive-title">Top-down / Rolling</h2></div>
+          <p>查看这组 A/B 与当前 workload 已登记的阶段分析产物。</p>
+        </div>
+        <div id="analysis-list"></div>
+      </section>
+
+      <footer>数据来自当前 SQLite 快照与分析产物。单次运行的差异不代表统计显著性。</footer>
+    </main>
+  </div>
+</body>
+</html>

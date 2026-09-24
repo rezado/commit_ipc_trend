@@ -21,7 +21,8 @@ const model = {
   counterSliceIndex: new Map(),
   counterValues: new Map(),
   counterObservationCount: 0,
-  scoreValues: new Map()
+  scoreValues: new Map(),
+  anomalies: null
 };
 
 let state = {
@@ -79,13 +80,14 @@ async function fetchText(path) {
 }
 
 async function loadData() {
-  const [manifestText, workloadText, sliceText, transitionText, counterText, scoreText] = await Promise.all([
+  const [manifestText, workloadText, sliceText, transitionText, counterText, scoreText, anomalyText] = await Promise.all([
     fetchText('manifest.json'),
     fetchText('workload-weighted-trend.csv'),
     fetchText('slice-ipc-wide.csv'),
     fetchText('commit-transition-summary.csv'),
     fetchText('perf-counters.json'),
-    fetchText('scores.csv')
+    fetchText('scores.csv'),
+    fetchText('performance-anomalies.json')
   ]);
   model.manifest = JSON.parse(manifestText);
   model.commits = [...model.manifest.runs].sort((a, b) => a.commit_order - b.commit_order);
@@ -129,6 +131,7 @@ async function loadData() {
   }));
 
   const counterData = JSON.parse(counterText);
+  model.anomalies = JSON.parse(anomalyText);
   model.counterMetrics = counterData.metrics;
   model.counterMetricById = new Map(model.counterMetrics.map(metric => [metric.metric_id, metric]));
   model.counterSlices = counterData.slices;
@@ -935,6 +938,45 @@ function renderTransitions() {
   }).join('');
 }
 
+function renderAnomalies() {
+  const report = model.anomalies;
+  if (!report?.comparisons?.length) {
+    $('anomalyPolicy').textContent = '暂无可比基线';
+    $('anomalyComparisons').innerHTML = '<div class="anomaly-empty">当前数据没有可用于异常检测的历史基线。</div>';
+    return;
+  }
+  const policy = report.policy;
+  $('anomalyPolicy').textContent = `Workload / Slice 阈值 ${policy.workload_cpi_degradation_pct}% / ${policy.slice_cpi_degradation_pct}%`;
+  $('anomalyComparisons').innerHTML = report.comparisons.map(comparison => {
+    const workloads = comparison.workloads.filter(row => row.is_anomaly);
+    const slices = comparison.workloads.flatMap(row => row.anomalous_slices.map(slice => ({workload:row.workload, ...slice})))
+      .sort((a, b) => b.weighted_cpi_contribution - a.weighted_cpi_contribution).slice(0, 8);
+    const baseIndex = model.commits.findIndex(commit => commit.short_commit === comparison.baseline.short_sha);
+    const targetIndex = model.commits.findIndex(commit => commit.short_commit === comparison.current.short_sha);
+    const label = comparison.label === 'fixed' ? '固定验收基线' : comparison.baseline_basis === 'tested_parent' ? '已测试父提交' : '最近可比观测';
+    const workloadRows = workloads.length ? workloads.map(row => `<button type="button" class="anomaly-workload" data-kind="workload" data-workload="${escapeHtml(row.workload)}" data-base="${baseIndex}" data-target="${targetIndex}"><span>${escapeHtml(row.workload)}</span><strong class="bad">CPI ${pct(row.cpi_degradation_percent, 3)}</strong><small>ΔCPI ${signed(row.weighted_cpi_delta, 6)} · ${row.anomalous_slice_count} slices</small></button>`).join('') : '<div class="anomaly-empty compact">没有超过阈值的 workload</div>';
+    const sliceRows = slices.length ? slices.map(row => {
+      const clues = row.counter_clues.slice(0, 3).map(clue => clue.display_name).join(' · ') || '暂无显著计数器变化';
+      return `<tr><td><button type="button" class="anomaly-slice" data-kind="slice" data-workload="${escapeHtml(row.workload)}" data-slice="${escapeHtml(row.slice)}" data-base="${baseIndex}" data-target="${targetIndex}"><b>${escapeHtml(row.workload)}</b><span>${escapeHtml(row.slice)}</span></button></td><td class="bad">${pct(row.cpi_degradation_percent, 3)}</td><td class="bad">${signed(row.weighted_cpi_contribution, 6)}</td><td title="${escapeHtml(clues)}">${escapeHtml(clues)}</td></tr>`;
+    }).join('') : '<tr><td colspan="4" class="anomaly-empty compact">没有超过阈值的 slice</td></tr>';
+    return `<article class="anomaly-block"><div class="anomaly-head"><div><span>${label}</span><b>${comparison.baseline.short_sha.slice(0, 7)} → ${comparison.current.short_sha.slice(0, 7)}</b></div><div class="anomaly-count"><strong>${comparison.summary.anomalous_workload_count}</strong> workloads · <strong>${comparison.summary.anomalous_slice_count}</strong> slices</div></div><div class="anomaly-body"><div class="anomaly-workloads"><h3>异常 Workload</h3>${workloadRows}</div><div class="anomaly-slices"><h3>加权影响最大的候选 Slice</h3><div class="table-scroll"><table><thead><tr><th>Workload / Slice</th><th>CPI 退化</th><th>加权 ΔCPI</th><th>计数器线索</th></tr></thead><tbody>${sliceRows}</tbody></table></div></div></div></article>`;
+  }).join('');
+  $('anomalyComparisons').querySelectorAll('button[data-kind]').forEach(button => button.onclick = () => {
+    const base = Number(button.dataset.base), target = Number(button.dataset.target);
+    if (base >= 0) state.base = base;
+    if (target >= 0) state.target = target;
+    state.workload = button.dataset.workload;
+    if (button.dataset.kind === 'slice') {
+      state.level = 'slice';
+      state.slice = button.dataset.slice;
+    } else {
+      state.level = 'workload';
+    }
+    render();
+    $('slices').scrollIntoView({behavior:'smooth', block:'start'});
+  });
+}
+
 function renderCommits() {
   const errorsByCommit = new Map();
   for (const error of model.manifest.errors) errorsByCommit.set(error.short_commit, (errorsByCommit.get(error.short_commit) || 0) + 1);
@@ -1018,6 +1060,7 @@ function render() {
     $('sort').disabled = false;
   }
   renderKpis();
+  renderAnomalies();
   renderTrend();
   if (counterMode) {
     renderRelation();

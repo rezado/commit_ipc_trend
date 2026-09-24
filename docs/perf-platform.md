@@ -60,7 +60,9 @@ python3 tools/serve_perf_platform.py --db /srv/perf/trend.sqlite \
   --git-repo /path/to/XiangShan --host 127.0.0.1 --port 8000
 ```
 
-The page selects the nearest published and comparable **tested first-parent ancestor** as a baseline when `--git-repo` is supplied; manual A/B selection remains available. It shows weighted CPI contributions, data coverage and source paths. JSON endpoints: `/api/runs`, `/api/workloads?run=...`, `/api/baseline?run=...`, `/api/compare?a=...&b=...&workload=...`, `/api/trend?level=workload&object=mcf&metric=equivalent_ipc`, `/api/artifacts?run=...`. The existing richer static trend dashboard remains available through `tools/serve_dashboard.py` for the historical mainline export; the new page reads the live SQLite DB.
+The page selects the nearest published and comparable **tested first-parent ancestor** as a baseline when `--git-repo` is supplied; manual A/B selection remains available. It shows commit trends, suite scores, weighted CPI contributions, slice counters and registered Top-down/Rolling outputs. Counter and Top-down event descriptions come from `commit_ipc_trend/counter_semantics.json`.
+
+The server exposes `/api/runs`, `/api/history?run=...`, `/api/baseline?run=...`, `/api/overall?a=...&b=...`, `/api/anomalies?current=...&baseline=...`, `/api/compare?a=...&b=...&workload=...`, `/api/slice?a=...&b=...&workload=...&slice=...` and `/api/analyses?a=...&b=...&workload=...`. It also serves `/api/trend`, `/api/workloads`, `/api/artifacts` and registered PNG/CSV files through `/api/analysis-file`. The separate historical static dashboard uses `tools/serve_dashboard.py` and exported CSV/JSON; this page reads the live SQLite DB.
 
 ## Investigate a regression
 
@@ -90,7 +92,7 @@ python3 tools/analyze_perf_pair.py --db /srv/perf/trend.sqlite \
   --perf-name ipc --hart 0
 ```
 
-Top-down consumes complete run report directories and its checkpoint JSON. Verify its script/config counter definitions against the RTL under analysis. Rolling requires ChiselDB produced by `enable_rolling`; it cannot reconstruct a missing time series. Its `diff` subcommand overlays two curves and does **not** align program semantics across changed binaries.
+Top-down validates the selected workload's checkpoint weights and builds input directories containing only the compared slices. Use `--python` to select an interpreter with upstream dependencies. Verify its script/config counter definitions against the RTL under analysis. Rolling checks both databases and rejects using the same file on both sides; the caller must still establish their run/slice provenance. It requires ChiselDB produced by `enable_rolling` and cannot reconstruct a missing time series. Its `diff` subcommand overlays two curves and does **not** align program semantics across changed binaries.
 
 ## Data contract and known limits
 

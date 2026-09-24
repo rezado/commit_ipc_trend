@@ -1,6 +1,6 @@
 # 使用本仓库分析香山性能回归
 
-本文对应 `feat/perf-regression-platform` 分支。目标是从一次已完成的 `perf-trigger` 运行出发，找到可比的基线，定位造成性能变化的 workload 和切片，再用计数器、Top-down 和 Rolling 缩小调查范围。所有命令都从本仓库根目录执行。
+PR #1 已合入当前主工作区。目标是从一次已完成的 `perf-trigger` 运行出发，找到可比的基线，定位造成性能变化的 workload 和切片，再用计数器、Top-down 和 Rolling 缩小调查范围。所有命令都从本仓库根目录执行。
 
 ## 先理解数据流
 
@@ -161,7 +161,12 @@ python3 tools/analyze_perf_pair.py --db "$PERF_DB" \
   --base-issue '<A的issue width>' --target-issue '<B的issue width>'
 ```
 
-包装器先做 A/B 可比性检查，再在独立输出目录执行上游脚本，保存 `analysis.json`、stdout/stderr、Top-down CSV 和图片，并在数据库 `analysis_runs` 表登记路径及工具 SHA。上游脚本分析的是**传入的完整报告目录与 JSON**，`--workload mcf` 用于包装器的可比性检查和记录，不会自动过滤 Top-down 输出；读取 CSV 时需定位目标 workload。对照 `results_base.csv`、`results_ref.csv` 的逐采样点数据及 `results-weighted_*.csv` 的加权结果；核对 `configs.py` 的 counter 映射。分类比例变化不等于对应的绝对等待周期变化。
+包装器先做 A/B 可比性检查，核对 JSON 中目标 workload 的 checkpoint 和权重，
+再建立仅含这组切片的输入链接目录与 JSON，在独立输出目录执行上游脚本。
+保存 `analysis.json`、stdout/stderr、Top-down CSV 和图片，并在数据库 `analysis_runs` 表登记路径及工具 SHA。
+可用 `--python /path/to/venv/bin/python` 指定上游依赖环境。输出目录中的分析 ID 已存在时拒绝覆盖。
+对照 `results_base.csv`、`results_ref.csv` 的逐采样点数据及 `results-weighted_*.csv` 的加权结果；
+核对 `configs.py` 的 counter 映射。分类比例变化不等于对应的绝对等待周期变化，缺失计数器的派生量不可作为结论。
 
 ## 6. 有 Rolling DB 时定位发生阶段
 

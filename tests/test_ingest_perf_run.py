@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 from http.server import ThreadingHTTPServer
 from pathlib import Path
 import subprocess
@@ -16,6 +17,7 @@ from commit_ipc_trend.ingest import build_manifest, read_checkpoint_list
 from commit_ipc_trend.service import TrendService
 from commit_ipc_trend.store import Store
 from tools.serve_perf_platform import handler_for
+from tools.analyze_perf_pair import prepare_topdown_inputs
 
 
 def git(repo: Path, *args: str) -> str:
@@ -88,6 +90,21 @@ class PerfRunIngestTest(unittest.TestCase):
                 baseline = TrendService(store).select_baseline(result["run_b"]["run_id"], repo)
                 self.assertEqual(baseline["status"], "found")
                 self.assertEqual(baseline["baseline"]["run_id"], result["run_a"]["run_id"])
+                anomalies = TrendService(store).detect_anomalies(result["run_b"]["run_id"], git_repo=repo)
+                self.assertEqual(anomalies["comparisons"][0]["baseline_basis"], "first_parent_tested_ancestor")
+                profile = root / "topdown.json"
+                profile.write_text(json.dumps({"mcf": {"points": {"1": "0.7", "2": "0.3"}},
+                                               "milc": {"points": {"3": "1.0"}}}))
+                for run_dir in (root / "run-1", root / "run-2"):
+                    for name in ("mcf_1_0.7", "mcf_2_0.3"):
+                        (run_dir / name / "simulator_err.txt").write_text("test counter log")
+                analysis_dir = root / "analysis"
+                analysis_dir.mkdir()
+                base_dir, target_dir, selected = prepare_topdown_inputs(result, profile, analysis_dir)
+                self.assertEqual(set(json.loads(selected.read_text())), {"mcf"})
+                for directory in (base_dir, target_dir):
+                    self.assertEqual({p.name for p in directory.iterdir()}, {"mcf_1_0.7", "mcf_2_0.3"})
+                    self.assertTrue((directory / "mcf_1_0.7/simulator_err.txt").is_file())
 
             server = ThreadingHTTPServer(("127.0.0.1", 0), handler_for(db, repo))
             thread = threading.Thread(target=server.serve_forever, daemon=True)
@@ -113,6 +130,18 @@ class PerfRunIngestTest(unittest.TestCase):
             self.assertEqual(len(partial["slice_results"]), 3)
             self.assertEqual(next(a for a in partial["aggregate_results"]
                                   if a["object_id"] == "mcf")["status"], "partial")
+
+            # Original directory spellings, not canonical slice names, determine freshness.
+            original = root / "run-1/milc_3_1.0"
+            self.assertNotEqual(original.name, "milc_3_1")
+            score = root / "score.txt"
+            score.write_text("custom score placeholder")
+            os.utime(score, (1, 1))
+            receipt = json.loads(receipts[0].read_text())
+            receipt["score_file"] = str(score)
+            receipts[0].write_text(json.dumps(receipt))
+            stale = build_manifest(receipts[0], repo)
+            self.assertEqual(stale["run"]["status"], "stale")
 
 
 if __name__ == "__main__":
